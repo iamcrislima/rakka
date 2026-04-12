@@ -8,29 +8,23 @@ import type { MatchSeed } from '@/lib/match-generator'
 
 interface Props {
   tournamentId: string
-  players: Player[]
-  matchSeeds: MatchSeed[]
+  players:      Player[]
+  matchSeeds:   MatchSeed[]
 }
 
 export default function StartGroupStageButton({ tournamentId, matchSeeds }: Props) {
-  const router = useRouter()
+  const router  = useRouter()
   const [loading, setLoading] = useState(false)
 
   async function start() {
     setLoading(true)
-
-    // Insert all 6 group matches
     const { error: mErr } = await supabase
       .from('matches')
       .insert(matchSeeds.map(s => ({ ...s, tournament_id: tournamentId, status: 'pending' })))
 
     if (!mErr) {
-      await supabase
-        .from('tournaments')
-        .update({ status: 'group_stage' })
-        .eq('id', tournamentId)
+      await supabase.from('tournaments').update({ status: 'group_stage' }).eq('id', tournamentId)
     }
-
     router.refresh()
     setLoading(false)
   }
@@ -39,9 +33,9 @@ export default function StartGroupStageButton({ tournamentId, matchSeeds }: Prop
     <button
       onClick={start}
       disabled={loading}
-      className="w-full bg-sky-600 text-white font-bold py-3 rounded-xl disabled:opacity-40 active:bg-sky-700"
+      className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-black text-base py-4 rounded-2xl disabled:opacity-50 active:scale-[0.98] transition-transform shadow-lg shadow-emerald-100"
     >
-      {loading ? 'Gerando partidas...' : '▶ Iniciar Fase de Grupos'}
+      {loading ? '⏳ Gerando partidas...' : '▶ Iniciar Fase de Grupos'}
     </button>
   )
 }

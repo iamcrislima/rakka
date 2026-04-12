@@ -4,13 +4,13 @@ import { supabase } from '@/lib/supabase'
 import type { Match, Player } from '@/types'
 import ScoreInput from './ScoreInput'
 
-const STAGE_LABEL: Record<string, string> = {
-  group_a:           'Grupo A',
-  group_b:           'Grupo B',
-  sf:                'Semifinais',
-  csf:               'Semifinais Consolação',
-  final:             'Final',
-  consolation_final: 'Final Consolação',
+const STAGE_CONFIG: Record<string, { label: string; emoji: string; color: string }> = {
+  group_a:           { label: 'Grupo A',             emoji: '🅰️', color: 'text-sky-600' },
+  group_b:           { label: 'Grupo B',             emoji: '🅱️', color: 'text-violet-600' },
+  sf:                { label: 'Semifinais',           emoji: '⚡', color: 'text-amber-600' },
+  csf:               { label: 'Semifinais Consolação',emoji: '🎯', color: 'text-slate-600' },
+  final:             { label: 'Grande Final',         emoji: '🏆', color: 'text-amber-600' },
+  consolation_final: { label: 'Final Consolação',     emoji: '🥉', color: 'text-slate-600' },
 }
 
 async function getData(id: string) {
@@ -24,67 +24,141 @@ async function getData(id: string) {
   }
 }
 
+function Avatar({ name, winner }: { name: string; winner?: boolean }) {
+  const initial = name[0]?.toUpperCase() ?? '?'
+  return (
+    <div className={`w-9 h-9 rounded-full text-white text-sm font-black flex items-center justify-center shrink-0 ${winner ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+      {initial}
+    </div>
+  )
+}
+
+interface TeamRowProps {
+  p1: string; p2: string
+  score?: number | null
+  isWinner?: boolean
+  align?: 'left' | 'right'
+}
+
+function TeamRow({ p1, p2, score, isWinner, align = 'left' }: TeamRowProps) {
+  const isRight = align === 'right'
+  return (
+    <div className={`flex items-center gap-2 flex-1 ${isRight ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex ${isRight ? 'flex-row-reverse' : ''} gap-1.5 shrink-0`}>
+        <Avatar name={p1} winner={isWinner} />
+        <Avatar name={p2} winner={isWinner} />
+      </div>
+      <div className={`min-w-0 ${isRight ? 'text-right' : ''}`}>
+        <p className={`text-sm font-bold truncate ${isWinner ? 'text-emerald-700' : 'text-slate-700'}`}>{p1}</p>
+        <p className={`text-sm font-bold truncate ${isWinner ? 'text-emerald-600' : 'text-slate-500'}`}>{p2}</p>
+      </div>
+      {score != null && (
+        <span className={`text-3xl font-black tabular-nums ml-auto ${isWinner ? 'text-emerald-500' : 'text-slate-200'}`}>
+          {score}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export default async function MatchesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const { matches, playerMap } = await getData(id)
-
   if (!matches.length) notFound()
-
-  // Group by stage
-  const grouped: Record<string, Match[]> = {}
-  for (const m of matches) {
-    ;(grouped[m.stage] ??= []).push(m)
-  }
 
   const name = (pid: string) => playerMap[pid]?.name ?? '?'
 
+  // Group by stage
+  const stageOrder = ['group_a','group_b','sf','csf','final','consolation_final']
+  const grouped = new Map<string, Match[]>()
+  for (const m of matches) {
+    const arr = grouped.get(m.stage) ?? []
+    arr.push(m)
+    grouped.set(m.stage, arr)
+  }
+
+  const pending = matches.filter(m => m.status === 'pending').length
+  const done    = matches.filter(m => m.status === 'done').length
+
   return (
     <div className="space-y-6">
-      <div>
-        <Link href={`/tournaments/${id}`} className="text-sm text-sky-600 font-medium">← Torneio</Link>
-        <h1 className="text-xl font-bold text-gray-800 mt-1">Partidas</h1>
+
+      {/* Header */}
+      <div className="space-y-1">
+        <Link href={`/tournaments/${id}`} className="text-sm font-bold text-sky-600">← Torneio</Link>
+        <h1 className="text-2xl font-black text-slate-800">Partidas</h1>
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full">✓ {done} concluídas</span>
+          {pending > 0 && (
+            <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full">⏳ {pending} pendentes</span>
+          )}
+        </div>
       </div>
 
-      {Object.entries(grouped).map(([stage, stageMatches]) => (
-        <section key={stage} className="space-y-2">
-          <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-            {STAGE_LABEL[stage] ?? stage}
-          </h2>
-
-          {stageMatches.map(m => (
-            <div key={m.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3">
-              {/* Round badge */}
-              {(stage === 'group_a' || stage === 'group_b') && (
-                <span className="text-[11px] font-bold text-gray-400">Rodada {m.round}</span>
-              )}
-
-              {/* Teams */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 space-y-0.5">
-                  <p className="text-sm font-semibold text-gray-800">{name(m.team1_p1)}</p>
-                  <p className="text-sm text-gray-500">{name(m.team1_p2)}</p>
-                </div>
-                <span className="text-xs font-bold text-gray-300">VS</span>
-                <div className="flex-1 text-right space-y-0.5">
-                  <p className="text-sm font-semibold text-gray-800">{name(m.team2_p1)}</p>
-                  <p className="text-sm text-gray-500">{name(m.team2_p2)}</p>
-                </div>
+      {/* Stages */}
+      {stageOrder
+        .filter(stage => grouped.has(stage))
+        .map(stage => {
+          const cfg = STAGE_CONFIG[stage]
+          const stageMatches = grouped.get(stage)!
+          return (
+            <section key={stage} className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{cfg.emoji}</span>
+                <span className={`text-sm font-black uppercase tracking-wide ${cfg.color}`}>{cfg.label}</span>
               </div>
 
-              {/* Score */}
-              {m.status === 'done' ? (
-                <div className="flex justify-center gap-4 text-lg font-bold">
-                  <span className={m.score1! > m.score2! ? 'text-sky-600' : 'text-gray-400'}>{m.score1}</span>
-                  <span className="text-gray-300">–</span>
-                  <span className={m.score2! > m.score1! ? 'text-sky-600' : 'text-gray-400'}>{m.score2}</span>
-                </div>
-              ) : (
-                <ScoreInput matchId={m.id} tournamentId={id} />
-              )}
-            </div>
-          ))}
-        </section>
-      ))}
+              {stageMatches.map(m => {
+                const isDone = m.status === 'done'
+                const t1Wins = isDone && m.score1! > m.score2!
+                const t2Wins = isDone && m.score2! > m.score1!
+
+                return (
+                  <div
+                    key={m.id}
+                    className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${isDone ? 'border-emerald-100' : 'border-amber-100'}`}
+                  >
+                    {/* Round label */}
+                    <div className={`px-4 py-2 text-[11px] font-black uppercase tracking-widest ${isDone ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                      {(stage === 'group_a' || stage === 'group_b') ? `Rodada ${m.round}` : 'Jogo'}
+                      {isDone && ' · Concluído ✓'}
+                    </div>
+
+                    <div className="px-4 py-4 space-y-4">
+                      {/* Teams + score */}
+                      {isDone ? (
+                        <div className="space-y-2.5">
+                          <TeamRow p1={name(m.team1_p1)} p2={name(m.team1_p2)} score={m.score1} isWinner={t1Wins} />
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-px bg-slate-100" />
+                            <span className="text-xs font-bold text-slate-300">VS</span>
+                            <div className="flex-1 h-px bg-slate-100" />
+                          </div>
+                          <TeamRow p1={name(m.team2_p1)} p2={name(m.team2_p2)} score={m.score2} isWinner={t2Wins} align="right" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-2.5">
+                            <TeamRow p1={name(m.team1_p1)} p2={name(m.team1_p2)} />
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-px bg-slate-100" />
+                              <span className="text-xs font-bold text-slate-300">VS</span>
+                              <div className="flex-1 h-px bg-slate-100" />
+                            </div>
+                            <TeamRow p1={name(m.team2_p1)} p2={name(m.team2_p2)} align="right" />
+                          </div>
+                          <div className="pt-1 border-t border-slate-50">
+                            <ScoreInput matchId={m.id} />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </section>
+          )
+        })}
     </div>
   )
 }
