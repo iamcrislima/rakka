@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { generateGroupMatches } from '@/lib/match-generator'
 import type { Tournament, Player } from '@/types'
 import StartGroupStageButton from './StartGroupStageButton'
+import ShuffleGroupsButton from './ShuffleGroupsButton'
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
   draft:        { label: 'Rascunho',     bg: 'bg-slate-400' },
@@ -93,11 +94,14 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
       {/* Actions */}
       <div className="space-y-3">
         {canStart && (
-          <StartGroupStageButton
-            tournamentId={tournament.id}
-            players={players}
-            matchSeeds={generateGroupMatches(players)}
-          />
+          <>
+            <ShuffleGroupsButton tournamentId={tournament.id} players={players} />
+            <StartGroupStageButton
+              tournamentId={tournament.id}
+              players={players}
+              matchSeeds={generateGroupMatches(players)}
+            />
+          </>
         )}
 
         {matchCount > 0 && (
