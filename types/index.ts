@@ -2,7 +2,6 @@ export type TournamentStatus = 'draft' | 'group_stage' | 'finals' | 'done'
 export type MatchStatus      = 'pending' | 'done'
 export type Stage =
   | 'group_a' | 'group_b'
-  | 'sf' | 'csf'
   | 'final' | 'consolation_final'
 
 export interface Tournament {

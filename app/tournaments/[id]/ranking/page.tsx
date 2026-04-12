@@ -126,17 +126,40 @@ export default async function RankingPage({ params }: { params: Promise<{ id: st
           <span className="text-sm font-black text-slate-600 uppercase tracking-wide">⚡ Projeção das finais</span>
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm divide-y divide-slate-50">
             {[
-              { emoji: '🏆', label: 'Semifinal A',        t1: rankA[0], t2: rankB[1] },
-              { emoji: '🏆', label: 'Semifinal B',        t1: rankB[0], t2: rankA[1] },
-              { emoji: '🥉', label: 'Consolação A', t1: rankA[2], t2: rankB[3] },
-              { emoji: '🥉', label: 'Consolação B', t1: rankB[2], t2: rankA[3] },
+              {
+                emoji: '🏆', label: 'Grande Final',
+                team1: [rankA[0], rankB[0]], team2: [rankA[1], rankB[1]],
+              },
+              {
+                emoji: '🥉', label: 'Final Consolação',
+                team1: [rankA[2], rankB[2]], team2: [rankA[3], rankB[3]],
+              },
             ].map(row => (
-              <div key={row.label} className="flex items-center gap-3 px-4 py-3">
-                <span>{row.emoji}</span>
-                <span className="text-xs font-bold text-slate-400 w-28 shrink-0">{row.label}</span>
-                <span className="text-sm font-bold text-slate-700 truncate flex-1">{row.t1?.player.name ?? '?'}</span>
-                <span className="text-xs text-slate-300 font-bold">vs</span>
-                <span className="text-sm font-bold text-slate-700 truncate flex-1 text-right">{row.t2?.player.name ?? '?'}</span>
+              <div key={row.label} className="px-4 py-3 space-y-2">
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wide">
+                  {row.emoji} {row.label}
+                </p>
+                <div className="flex items-stretch gap-3">
+                  {/* Team 1 */}
+                  <div className="flex-1 space-y-0.5">
+                    {row.team1.map((s, i) => (
+                      <p key={i} className="text-sm font-bold text-slate-800 truncate">
+                        {s?.player.name ?? '?'}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-xs font-black text-slate-300 px-1">VS</span>
+                  </div>
+                  {/* Team 2 */}
+                  <div className="flex-1 text-right space-y-0.5">
+                    {row.team2.map((s, i) => (
+                      <p key={i} className="text-sm font-bold text-slate-800 truncate">
+                        {s?.player.name ?? '?'}
+                      </p>
+                    ))}
+                  </div>
+                </div>
               </div>
             ))}
           </div>

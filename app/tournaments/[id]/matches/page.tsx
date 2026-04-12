@@ -5,12 +5,10 @@ import type { Match, Player } from '@/types'
 import ScoreInput from './ScoreInput'
 
 const STAGE_CONFIG: Record<string, { label: string; emoji: string; color: string }> = {
-  group_a:           { label: 'Grupo A',             emoji: '🅰️', color: 'text-sky-600' },
-  group_b:           { label: 'Grupo B',             emoji: '🅱️', color: 'text-violet-600' },
-  sf:                { label: 'Semifinais',           emoji: '⚡', color: 'text-amber-600' },
-  csf:               { label: 'Semifinais Consolação',emoji: '🎯', color: 'text-slate-600' },
-  final:             { label: 'Grande Final',         emoji: '🏆', color: 'text-amber-600' },
-  consolation_final: { label: 'Final Consolação',     emoji: '🥉', color: 'text-slate-600' },
+  group_a:           { label: 'Grupo A',         emoji: '🅰️', color: 'text-sky-600' },
+  group_b:           { label: 'Grupo B',         emoji: '🅱️', color: 'text-violet-600' },
+  final:             { label: 'Grande Final',    emoji: '🏆', color: 'text-amber-600' },
+  consolation_final: { label: 'Final Consolação',emoji: '🥉', color: 'text-slate-600' },
 }
 
 async function getData(id: string) {
@@ -69,7 +67,7 @@ export default async function MatchesPage({ params }: { params: Promise<{ id: st
   const name = (pid: string) => playerMap[pid]?.name ?? '?'
 
   // Group by stage
-  const stageOrder = ['group_a','group_b','sf','csf','final','consolation_final']
+  const stageOrder = ['group_a','group_b','final','consolation_final']
   const grouped = new Map<string, Match[]>()
   for (const m of matches) {
     const arr = grouped.get(m.stage) ?? []
