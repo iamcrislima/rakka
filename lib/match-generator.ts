@@ -1,21 +1,25 @@
 /**
- * Match generation for beach tennis.
+ * Match generation for doubles/team tournaments.
  *
- * Group stage — 4 players [A,B,C,D]:
+ * Group stage — 4 players [A,B,C,D] per group:
  *   Round 1: AB vs CD
  *   Round 2: AC vs BD
  *   Round 3: AD vs BC
  *   → every player plays 3 matches, every pair plays together once.
  *
- * Finals — cross-group doubles:
- *   Final:             (1A + 1B)  vs  (2A + 2B)
- *   Consolation final: (3A + 3B)  vs  (4A + 4B)
+ * Supports 8, 12, 16, 24, 32 players → 2, 3, 4, 6, 8 groups of 4.
+ *
+ * Knockout (2 groups only):
+ *   Final:             (1A + 1B) vs (2A + 2B)
+ *   Consolation final: (3A + 3B) vs (4A + 4B)
  */
 
-import type { Player } from '@/types'
+import type { Player, Stage } from '@/types'
+
+const GROUP_LETTERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
 
 export interface MatchSeed {
-  stage:    'group_a' | 'group_b'
+  stage:    Stage
   round:    number
   team1_p1: string
   team1_p2: string
@@ -34,15 +38,26 @@ export interface KnockoutSeed {
 
 // ── Group stage ──────────────────────────────────────────────────────────────
 
+/**
+ * Generate round-robin group matches for all groups.
+ * Players are sorted by position; every 4 consecutive players form one group.
+ * Supports any multiple of 4 players (8, 12, 16, 24, 32).
+ */
 export function generateGroupMatches(players: Player[]): MatchSeed[] {
-  const sorted = [...players].sort((a, b) => a.position - b.position)
-  return [
-    ...groupRounds(sorted.slice(0, 4), 'group_a'),
-    ...groupRounds(sorted.slice(4, 8), 'group_b'),
-  ]
+  const sorted    = [...players].sort((a, b) => a.position - b.position)
+  const numGroups = Math.floor(sorted.length / 4)
+  const seeds: MatchSeed[] = []
+
+  for (let g = 0; g < numGroups; g++) {
+    const group = sorted.slice(g * 4, (g + 1) * 4)
+    const stage = `group_${GROUP_LETTERS[g]}` as Stage
+    seeds.push(...groupRounds(group, stage))
+  }
+
+  return seeds
 }
 
-function groupRounds(p: Player[], stage: 'group_a' | 'group_b'): MatchSeed[] {
+function groupRounds(p: Player[], stage: Stage): MatchSeed[] {
   const [A, B, C, D] = p
   return [
     { stage, round: 1, team1_p1: A.id, team1_p2: B.id, team2_p1: C.id, team2_p2: D.id },
@@ -51,10 +66,10 @@ function groupRounds(p: Player[], stage: 'group_a' | 'group_b'): MatchSeed[] {
   ]
 }
 
-// ── Finals ───────────────────────────────────────────────────────────────────
+// ── Finals (2-group tournaments) ─────────────────────────────────────────────
 
 /**
- * Generate 2 knockout matches from group rankings.
+ * Generate 2 knockout matches from 2-group rankings.
  *
  * @param rankA  [1st, 2nd, 3rd, 4th] from Group A
  * @param rankB  [1st, 2nd, 3rd, 4th] from Group B

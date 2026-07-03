@@ -1,5 +1,5 @@
 -- ============================================================
--- Beach Tennis Manager — Database Schema
+-- Rakka — Database Schema
 -- ============================================================
 
 create extension if not exists "uuid-ossp";

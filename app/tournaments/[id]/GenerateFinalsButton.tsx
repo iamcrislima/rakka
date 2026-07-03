@@ -7,22 +7,38 @@ import type { KnockoutSeed } from '@/lib/match-generator'
 
 interface Props {
   tournamentId: string
-  seeds: KnockoutSeed[]
+  categoryId?:  string
+  seeds:        KnockoutSeed[]
 }
 
-export default function GenerateFinalsButton({ tournamentId, seeds }: Props) {
-  const router  = useRouter()
+export default function GenerateFinalsButton({ tournamentId, categoryId, seeds }: Props) {
+  const router    = useRouter()
   const [loading, setLoading] = useState(false)
 
   async function generate() {
     setLoading(true)
-    const { error } = await supabase
-      .from('matches')
-      .insert(seeds.map(s => ({ ...s, tournament_id: tournamentId, status: 'pending' })))
+
+    const rows = seeds.map(s => ({
+      ...s,
+      tournament_id: tournamentId,
+      ...(categoryId ? { category_id: categoryId } : {}),
+      status: 'pending',
+    }))
+
+    const { error } = await supabase.from('matches').insert(rows)
 
     if (!error) {
-      await supabase.from('tournaments').update({ status: 'finals' }).eq('id', tournamentId)
+      if (categoryId) {
+        await supabase.from('categories').update({ status: 'finals' }).eq('id', categoryId)
+        await supabase.from('tournaments')
+          .update({ status: 'finals' })
+          .eq('id', tournamentId)
+          .in('status', ['draft', 'group_stage'])
+      } else {
+        await supabase.from('tournaments').update({ status: 'finals' }).eq('id', tournamentId)
+      }
     }
+
     router.refresh()
     setLoading(false)
   }
@@ -31,9 +47,16 @@ export default function GenerateFinalsButton({ tournamentId, seeds }: Props) {
     <button
       onClick={generate}
       disabled={loading}
-      className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-base py-4 rounded-2xl disabled:opacity-50 active:scale-[0.98] transition-transform shadow-lg shadow-amber-100"
+      className="ring-pulse w-full bg-gradient-to-r from-amber-400 to-orange-400 text-white font-black text-base py-4 rounded-xl disabled:opacity-50 active:scale-[0.97] active:from-amber-500 active:to-orange-500 transition-transform"
     >
-      {loading ? '⏳ Gerando finais...' : '⚡ Gerar Finais'}
+      {loading ? (
+        <span className="flex items-center justify-center gap-2">
+          <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" />
+          Gerando finais...
+        </span>
+      ) : (
+        '⚡ Gerar Finais'
+      )}
     </button>
   )
 }

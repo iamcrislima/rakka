@@ -1,21 +1,216 @@
 @import "tailwindcss";
 
+/* ── Rakka design tokens ────────────────────────────── */
+@theme {
+  --color-bt-bg:       #0A0A0A;
+  --color-bt-surface:  #111111;
+  --color-bt-card:     #161616;
+  --color-bt-elevated: #1C1C1C;
+  --color-bt-hover:    #1C1C1C;
+  --color-bt-neon:     #C8F135;
+  --color-bt-green:    #22C55E;
+  --color-bt-text:     #F0F0F0;
+  --color-bt-muted:    #888888;
+  --color-bt-subtle:   #6B6B6B;
+}
+
 :root {
-  --court-bg: #EFF6FF;
-  --court-card: #FFFFFF;
-  --court-navy: #0F2044;
-  --court-blue: #0EA5E9;
-  --court-win: #10B981;
-  --court-loss: #EF4444;
-  --court-pending: #F59E0B;
+  /* kept for compatibility */
+  --court-bg:      #111111;
+  --court-navy:    #0A0A0A;
+  --court-blue:    #C8F135;
+  --court-win:     #22C55E;
+  --court-pending: #f59e0b;
+
+  /* Rakka palette */
+  --bt-bg:       #0A0A0A;
+  --bt-surface:  #111111;
+  --bt-card:     #161616;
+  --bt-elevated: #1C1C1C;
+  --bt-hover:    #1C1C1C;
+  --bt-border:   #242424;
+  --bt-neon:     #C8F135;
+  --bt-neon-hover: #D4F54A;
+  --bt-neon-dim: rgba(200,241,53,0.14);
+  --bt-green:    #22C55E;
+  --bt-amber:    #f59e0b;
+  --bt-red:      #FF4444;
+  --bt-text:     #F0F0F0;
+  --bt-muted:    #888888;
+  --bt-subtle:   #6B6B6B;
 }
 
 * { -webkit-tap-highlight-color: transparent; }
 
-body {
-  background: var(--court-bg);
-  overscroll-behavior: none;
+/* ── Keyboard focus (a11y) ─────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--bt-neon);
+  outline-offset: 2px;
 }
 
-/* Stepper button active feedback */
-.stepper-btn:active { transform: scale(0.92); }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bt-bg);
+  overscroll-behavior: none;
+  color: var(--bt-text);
+}
+
+/* ── Core animations ───────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+@keyframes ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 0px rgba(245, 158, 11, 0.5); }
+  50%       { box-shadow: 0 0 0 7px rgba(245, 158, 11, 0); }
+}
+@keyframes progress-fill {
+  from { width: 0%; }
+}
+@keyframes check-draw {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes neon-pulse {
+  0%, 100% { box-shadow: 0 0 4px var(--bt-neon), 0 0 12px var(--bt-neon-dim); }
+  50%       { box-shadow: 0 0 8px var(--bt-neon), 0 0 24px var(--bt-neon-dim); }
+}
+@keyframes live-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.7); }
+}
+@keyframes reveal-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes champion-pop {
+  0%   { opacity: 0; transform: scale(0.8); }
+  60%  { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes confetti-fall {
+  0%   { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(110vh) rotate(360deg); opacity: 0.85; }
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Utility classes ───────────────────────────────── */
+.animate-fade-up  { animation: fade-up  0.28s cubic-bezier(.22,.68,0,1.2) both; }
+.animate-fade-in  { animation: fade-in  0.2s ease both; }
+.animate-scale-in { animation: scale-in 0.22s cubic-bezier(.22,.68,0,1.2) both; }
+.animate-pop      { animation: pop      0.35s cubic-bezier(.22,.68,0,1.2); }
+.ring-pulse       { animation: ring-pulse 2s ease-in-out infinite; }
+.animate-reveal-in    { animation: reveal-in 0.45s cubic-bezier(.22,.68,0,1.2) both; }
+.animate-champion-pop { animation: champion-pop 0.6s cubic-bezier(.22,.68,0,1.2) both; }
+.animate-row-in       { animation: row-in 0.4s cubic-bezier(.22,.68,0,1.2) both; }
+
+.confetti-piece {
+  position:      absolute;
+  top:           -10vh;
+  width:         8px;
+  height:        14px;
+  border-radius: 2px;
+  animation-name: confetti-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* Staggered list entrance */
+.stagger > * { animation: fade-up 0.28s cubic-bezier(.22,.68,0,1.2) both; }
+.stagger > *:nth-child(1) { animation-delay:  0ms; }
+.stagger > *:nth-child(2) { animation-delay: 55ms; }
+.stagger > *:nth-child(3) { animation-delay: 110ms; }
+.stagger > *:nth-child(4) { animation-delay: 165ms; }
+.stagger > *:nth-child(5) { animation-delay: 220ms; }
+.stagger > *:nth-child(6) { animation-delay: 275ms; }
+.stagger > *:nth-child(7) { animation-delay: 330ms; }
+.stagger > *:nth-child(8) { animation-delay: 385ms; }
+
+/* ── Buttons ───────────────────────────────────────── */
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+  background: var(--bt-neon);
+  color: var(--bt-bg);
+  border-radius: 4px;
+  font-weight: 700;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+.btn-primary:hover   { background: var(--bt-neon-hover); }
+.btn-primary:active  { transform: scale(0.97); }
+
+.btn-secondary {
+  position: relative;
+  background: transparent;
+  color: var(--bt-neon);
+  border: 1.5px solid var(--bt-neon);
+  border-radius: 4px;
+  font-weight: 700;
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+.btn-secondary:hover  { background: var(--bt-neon-dim); }
+.btn-secondary:active { transform: scale(0.97); }
+
+/* ── Cards ─────────────────────────────────────────── */
+.card-rakka {
+  background: var(--bt-card);
+  border: 1px solid var(--bt-border);
+  border-radius: 12px;
+}
+.card-rakka:hover { background: var(--bt-hover); }
+
+/* ── Display font (headings, big numbers) ──────────── */
+.font-display {
+  font-family: var(--font-display), 'Arial Narrow', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+/* ── Logo wordmark ─────────────────────────────────── */
+.rakka-logo {
+  font-family: var(--font-display), 'Arial Narrow', sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.rakka-logo::after {
+  content: '.';
+  color: var(--bt-neon);
+}
+
+/* ── Stepper ───────────────────────────────────────── */
+.stepper-btn {
+  transition: transform 0.1s cubic-bezier(.22,.68,0,1.2),
+              background-color 0.15s ease;
+  user-select: none;
+}
+.stepper-btn:active { transform: scale(0.86); }
+
+/* ── Progress bar ──────────────────────────────────── */
+.progress-bar-fill { animation: progress-fill 0.6s cubic-bezier(.22,.68,0,1.2) both; }
+
+/* ── Check SVG ─────────────────────────────────────── */
+.check-stroke {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: check-draw 0.4s 0.1s cubic-bezier(.22,.68,0,1.2) forwards;
+}
+
+/* ── Scrollbar ──────────────────────────────────────── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

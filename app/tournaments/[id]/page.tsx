@@ -1,189 +1,233 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/server'
 import { generateGroupMatches, generateKnockoutSeeds } from '@/lib/match-generator'
 import { computeRanking } from '@/lib/ranking'
-import type { Tournament, Player, Match } from '@/types'
-import StartGroupStageButton from './StartGroupStageButton'
-import ShuffleGroupsButton from './ShuffleGroupsButton'
-import GenerateFinalsButton from './GenerateFinalsButton'
+import { rulesFromTournament } from '@/lib/match-rules'
+import { isSuper8MistoComplete } from '@/lib/super8-misto'
+import type { Tournament, Player, Match, Category, Court } from '@/types'
+import TournamentHub from './TournamentHub'
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
-  draft:        { label: 'Rascunho',       bg: 'bg-slate-400' },
-  group_stage:  { label: 'Fase de grupos', bg: 'bg-sky-500' },
-  finals:       { label: 'Finais',         bg: 'bg-amber-500' },
-  done:         { label: 'Encerrado',      bg: 'bg-emerald-500' },
+// ── Status config ─────────────────────────────────────────────
+
+const STATUS_CFG: Record<string, { label: string; dot: string; text: string; shape: string }> = {
+  draft:       { label: 'Rascunho',        dot: 'bg-[#444444]',               text: 'text-[#888888]',  shape: '○' },
+  group_stage: { label: 'Fase de grupos',  dot: 'bg-[#C8F135] animate-pulse', text: 'text-[#C8F135]',  shape: '▶' },
+  finals:      { label: 'Finais',          dot: 'bg-amber-400 animate-pulse', text: 'text-amber-400',  shape: '◆' },
+  done:        { label: 'Encerrado',       dot: 'bg-emerald-400',             text: 'text-emerald-400', shape: '✓' },
 }
 
+// ── Data fetching ─────────────────────────────────────────────
+
 async function getData(id: string) {
-  const [{ data: t }, { data: players }, { data: matches }] = await Promise.all([
+  const supabase = await createClient()
+  const [{ data: t }, { data: categories }] = await Promise.all([
     supabase.from('tournaments').select('*').eq('id', id).single(),
-    supabase.from('players').select('*').eq('tournament_id', id).order('position'),
-    supabase.from('matches').select('*').eq('tournament_id', id),
+    supabase.from('categories').select('*').eq('tournament_id', id).order('sort_order').order('created_at'),
   ])
   return {
-    tournament: t as Tournament | null,
-    players:    (players ?? []) as Player[],
-    matches:    (matches ?? []) as Match[],
+    tournament:  t as Tournament | null,
+    categories: (categories ?? []) as Category[],
   }
 }
 
-function PlayerChip({ player }: { player: Player }) {
-  const isGroupA = player.position <= 4
+async function getLegacyData(id: string) {
+  const supabase = await createClient()
+  const [{ data: players }, { data: matches }, { data: courts }] = await Promise.all([
+    supabase.from('players').select('*').eq('tournament_id', id).is('category_id', null).order('position'),
+    supabase.from('matches').select('*').eq('tournament_id', id).is('category_id', null),
+    supabase.from('courts').select('*').eq('tournament_id', id).order('sort_order'),
+  ])
+  return {
+    players: (players ?? []) as Player[],
+    matches: (matches ?? []) as Match[],
+    courts:  (courts  ?? []) as Court[],
+  }
+}
+
+// ── Page ──────────────────────────────────────────────────────
+
+export default async function TournamentPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const { tournament, categories } = await getData(id)
+  if (!tournament) notFound()
+
+  // Legacy mode: tournament has direct players (no categories)
+  if (categories.length === 0) {
+    const { players, matches, courts } = await getLegacyData(id)
+
+    const rules          = rulesFromTournament(tournament)
+    const groupA         = players.filter(p => p.position <= 4)
+    const groupB         = players.filter(p => p.position >= 5)
+    const groupMatches   = matches.filter(m => m.stage === 'group_a' || m.stage === 'group_b')
+    const allGroupDone   = groupMatches.length === 6 && groupMatches.every(m => m.status === 'done')
+    const hasFinalsMatches = matches.some(m => m.stage === 'final' || m.stage === 'consolation_final')
+
+    const finalsSeeds = (() => {
+      if (!allGroupDone || hasFinalsMatches) return null
+      const rankA = computeRanking(groupA, matches.filter(m => m.stage === 'group_a'))
+      const rankB = computeRanking(groupB, matches.filter(m => m.stage === 'group_b'))
+      if (rankA.length < 4 || rankB.length < 4) return null
+      return generateKnockoutSeeds(rankA.map(s => s.player), rankB.map(s => s.player))
+    })()
+
+    const matchSeeds = players.length === 8 ? generateGroupMatches(players) : []
+
+    return (
+      <TournamentHub
+        tournament={tournament}
+        players={players}
+        matches={matches}
+        rules={rules}
+        finalsSeeds={finalsSeeds}
+        matchSeeds={matchSeeds}
+        courts={courts}
+      />
+    )
+  }
+
+  // ── Category mode ─────────────────────────────────────────────
+  const mistoCategory = categories.find(c => c.format === 'super8_misto') ?? null
+  let revelationReady = false
+  if (mistoCategory) {
+    const supabase = await createClient()
+    const { data: mistoMatches } = await supabase
+      .from('matches').select('status').eq('category_id', mistoCategory.id)
+    revelationReady = isSuper8MistoComplete((mistoMatches ?? []) as Match[])
+  }
+
   return (
-    <div className="flex items-center gap-2 bg-white/80 rounded-xl px-3 py-2">
-      <div className={`w-7 h-7 rounded-full text-white text-xs font-black flex items-center justify-center shrink-0 ${isGroupA ? 'bg-sky-500' : 'bg-violet-500'}`}>
-        {player.name[0]?.toUpperCase() ?? '?'}
+    <CategoryOverview
+      tournament={tournament}
+      categories={categories}
+      revelationReady={revelationReady}
+    />
+  )
+}
+
+// ── Category overview (multiple categories) ───────────────────
+
+function CategoryOverview({ tournament, categories, revelationReady }: {
+  tournament: Tournament; categories: Category[]; revelationReady: boolean
+}) {
+  const active = categories.filter(c => c.status === 'group_stage' || c.status === 'finals')
+  const rest   = categories.filter(c => c.status !== 'group_stage' && c.status !== 'finals')
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in lg:py-4">
+
+      {/* Header */}
+      <div className="relative rounded-2xl p-5 overflow-hidden" style={{ background: 'linear-gradient(135deg, #161616 0%, #0A0A0A 100%)', border: '1px solid #242424' }}>
+        <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full" style={{ background: 'var(--bt-neon-dim)' }} />
+        <div className="absolute -right-2 top-8 w-16 h-16 rounded-full" style={{ background: 'var(--bt-neon-dim)' }} />
+        <div className="relative space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Link href="/" className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#888888] hover:text-[#F0F0F0] transition-colors">
+              ← Torneios
+            </Link>
+            <div className="flex items-center gap-2">
+              <a
+                href={`/tournaments/${tournament.id}/settings`}
+                className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-[#1C1C1C] text-[#888888] hover:text-[#F0F0F0] transition-colors"
+              >
+                ⚙️ Configurações
+              </a>
+              <a
+                href={`/tournaments/${tournament.id}/tv`}
+                className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-[#1C1C1C] text-[#888888] hover:text-[#F0F0F0] transition-colors"
+              >
+                📺 Modo TV
+              </a>
+              {revelationReady && (
+                <a
+                  href={`/tournaments/${tournament.id}/tv/revelacao`}
+                  className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full transition-colors"
+                  style={{ background: '#C8F135', color: '#0A0A0A' }}
+                >
+                  🎉 Cerimônia de Revelação
+                </a>
+              )}
+            </div>
+          </div>
+          <p className="font-display text-2xl font-bold uppercase leading-tight text-[#F0F0F0]">{tournament.name}</p>
+          <p className="text-xs text-[#888888] font-semibold">
+            {categories.length} categoria{categories.length !== 1 ? 's' : ''}
+          </p>
+        </div>
       </div>
-      <span className="text-sm font-semibold text-slate-700 truncate">{player.name}</span>
+
+      {/* Active categories */}
+      {active.length > 0 && (
+        <section className="space-y-2">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#888888] px-0.5">Em andamento</p>
+          <div className="stagger space-y-2">
+            {active.map(c => <CategoryCard key={c.id} category={c} tournamentId={tournament.id} highlight />)}
+          </div>
+        </section>
+      )}
+
+      {/* Other categories */}
+      {rest.length > 0 && (
+        <section className="space-y-2">
+          {active.length > 0 && (
+            <p className="text-[11px] font-black uppercase tracking-widest text-[#888888] px-0.5">Outras categorias</p>
+          )}
+          <div className="stagger space-y-2">
+            {rest.map(c => <CategoryCard key={c.id} category={c} tournamentId={tournament.id} />)}
+          </div>
+        </section>
+      )}
+
+      {/* Empty state */}
+      {categories.length === 0 && (
+        <div className="text-center py-16 space-y-3">
+          <p className="text-5xl">🏸</p>
+          <p className="font-bold text-[#888888]">Nenhuma categoria ainda</p>
+          <p className="text-sm text-[#888888]">Adicione a primeira categoria abaixo</p>
+        </div>
+      )}
+
+      {/* Add category button */}
+      <Link
+        href={`/tournaments/${tournament.id}/categories/new`}
+        className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-[#242424] hover:border-[#C8F135]/40 bg-[#161616] hover:bg-[#1C1C1C] text-[#888888] hover:text-[#C8F135] font-bold text-sm py-4 rounded-2xl transition-all"
+      >
+        <span className="text-base leading-none">+</span>
+        Adicionar categoria
+      </Link>
+
     </div>
   )
 }
 
-export default async function TournamentPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id }    = await params
-  const { tournament, players, matches } = await getData(id)
-  if (!tournament) notFound()
-
-  const cfg        = STATUS_CONFIG[tournament.status] ?? STATUS_CONFIG.draft
-  const groupA     = players.filter(p => p.position <= 4)
-  const groupB     = players.filter(p => p.position >= 5)
-  const matchCount = matches.length
-
-  // Group stage state
-  const groupMatches = matches.filter(m => m.stage === 'group_a' || m.stage === 'group_b')
-  const allGroupDone = groupMatches.length === 6 && groupMatches.every(m => m.status === 'done')
-  const hasFinalsMatches = matches.some(m => m.stage === 'final' || m.stage === 'consolation_final')
-
-  // Finals seeds (computed server-side from rankings)
-  const finalsSeeds = (() => {
-    if (!allGroupDone || hasFinalsMatches) return null
-    const rankA = computeRanking(groupA, matches.filter(m => m.stage === 'group_a'))
-    const rankB = computeRanking(groupB, matches.filter(m => m.stage === 'group_b'))
-    if (rankA.length < 4 || rankB.length < 4) return null
-    return generateKnockoutSeeds(
-      rankA.map(s => s.player),
-      rankB.map(s => s.player),
-    )
-  })()
-
-  const canStart = tournament.status === 'draft' && players.length === 8
-
+function CategoryCard({ category, tournamentId, highlight = false }: {
+  category:     Category
+  tournamentId: string
+  highlight?:   boolean
+}) {
+  const cfg = STATUS_CFG[category.status] ?? STATUS_CFG.draft
   return (
-    <div className="space-y-5">
-
-      <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-bold text-sky-600">
-        ← Torneios
-      </Link>
-
-      {/* Banner */}
-      <div className="bg-gradient-to-br from-[#0F2044] to-[#1D4ED8] rounded-2xl p-5 text-white space-y-3">
-        <div className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${cfg.bg} text-white`}>
-          {cfg.label}
-        </div>
-        <h1 className="text-2xl font-black leading-tight">{tournament.name}</h1>
-        <p className="text-xs text-white/50">
-          {players.length}/8 jogadores · {matchCount} partida{matchCount !== 1 ? 's' : ''}
+    <Link
+      href={`/tournaments/${tournamentId}/categories/${category.id}`}
+      className={`flex items-center gap-4 rounded-2xl px-4 py-4 border transition-transform active:scale-[0.985] bg-[#161616] ${
+        highlight ? 'border-[#C8F135]/30 shadow-md shadow-black/20' : 'border-[#242424]'
+      }`}
+    >
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-lg font-black shrink-0 ${
+        highlight ? 'bg-[#C8F135] text-[#0A0A0A]' : 'bg-[#1C1C1C] text-[#888888] border border-[#242424]'
+      }`}>
+        {category.name.charAt(0).toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-[#F0F0F0] truncate text-[15px]">{category.name}</p>
+        <p className="text-xs text-[#888888] mt-0.5">
+          {category.max_games} games · TB até {category.tiebreak_to}
         </p>
       </div>
-
-      {/* Groups */}
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { label: 'Grupo A', list: groupA, badge: 'bg-sky-500' },
-          { label: 'Grupo B', list: groupB, badge: 'bg-violet-500' },
-        ].map(g => (
-          <div key={g.label} className="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 space-y-2">
-            <div className="flex items-center gap-1.5">
-              <span className={`w-5 h-5 rounded text-white text-[10px] font-black flex items-center justify-center ${g.badge}`}>
-                {g.label.slice(-1)}
-              </span>
-              <span className="text-xs font-bold text-slate-500">{g.label}</span>
-            </div>
-            <div className="space-y-1.5">
-              {g.list.map(p => <PlayerChip key={p.id} player={p} />)}
-              {g.list.length === 0 && <p className="text-xs text-slate-300 px-1">Sem jogadores</p>}
-            </div>
-          </div>
-        ))}
+      <div className={`flex items-center gap-1.5 shrink-0 ${cfg.text}`}>
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+        <span className="text-xs font-bold">{cfg.shape} {cfg.label}</span>
       </div>
-
-      {/* Finals composition preview */}
-      {finalsSeeds && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
-          <p className="text-xs font-black text-amber-700 uppercase tracking-wide">⚡ Composição das finais</p>
-          {finalsSeeds.map(s => {
-            const playerMap = Object.fromEntries(players.map(p => [p.id, p]))
-            const t1p1 = playerMap[s.team1_p1]?.name ?? '?'
-            const t1p2 = playerMap[s.team1_p2]?.name ?? '?'
-            const t2p1 = playerMap[s.team2_p1]?.name ?? '?'
-            const t2p2 = playerMap[s.team2_p2]?.name ?? '?'
-            const label = s.stage === 'final' ? '🏆 Final' : '🥉 Consolação'
-            return (
-              <div key={s.stage} className="space-y-1">
-                <p className="text-[11px] font-bold text-amber-600">{label}</p>
-                <div className="flex items-center gap-2 text-sm">
-                  <div className="flex-1">
-                    <p className="font-bold text-slate-800">{t1p1}</p>
-                    <p className="font-bold text-slate-800">{t1p2}</p>
-                  </div>
-                  <span className="text-xs font-black text-slate-300">VS</span>
-                  <div className="flex-1 text-right">
-                    <p className="font-bold text-slate-800">{t2p1}</p>
-                    <p className="font-bold text-slate-800">{t2p2}</p>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="space-y-3">
-        {canStart && (
-          <>
-            <ShuffleGroupsButton tournamentId={tournament.id} players={players} />
-            <StartGroupStageButton
-              tournamentId={tournament.id}
-              players={players}
-              matchSeeds={generateGroupMatches(players)}
-            />
-          </>
-        )}
-
-        {finalsSeeds && (
-          <GenerateFinalsButton tournamentId={tournament.id} seeds={finalsSeeds} />
-        )}
-
-        {matchCount > 0 && (
-          <>
-            <Link
-              href={`/tournaments/${id}/matches`}
-              className="flex items-center gap-4 bg-white rounded-2xl px-4 py-4 shadow-sm border border-slate-100 active:bg-slate-50 active:scale-[0.99] transition-transform"
-            >
-              <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center text-2xl shrink-0">🏸</div>
-              <div>
-                <p className="font-bold text-slate-800">Partidas</p>
-                <p className="text-xs text-slate-400">{matchCount} jogos</p>
-              </div>
-              <span className="ml-auto text-slate-300 text-lg">›</span>
-            </Link>
-
-            <Link
-              href={`/tournaments/${id}/ranking`}
-              className="flex items-center gap-4 bg-white rounded-2xl px-4 py-4 shadow-sm border border-slate-100 active:bg-slate-50 active:scale-[0.99] transition-transform"
-            >
-              <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-2xl shrink-0">🏆</div>
-              <div>
-                <p className="font-bold text-slate-800">Ranking</p>
-                <p className="text-xs text-slate-400">Ver classificação ao vivo</p>
-              </div>
-              <span className="ml-auto text-slate-300 text-lg">›</span>
-            </Link>
-          </>
-        )}
-      </div>
-    </div>
+    </Link>
   )
 }
