@@ -6,22 +6,22 @@ import { useTopbar } from './TopbarContext'
 
 /** Map pathname → static fallback title when no page calls useSetTopbar */
 const STATIC_TITLES: Record<string, string> = {
-  '/':                  'Torneios',
-  '/leagues':           'Ligas',
-  '/leagues/new':       'Nova Liga',
-  '/registrations/new': 'Nova Inscrição',
-  '/tournaments/new':   'Novo Torneio',
+  '/admin':                   'Torneios',
+  '/admin/leagues':           'Ligas',
+  '/admin/leagues/new':       'Nova Liga',
+  '/admin/registrations/new': 'Nova Inscrição',
+  '/admin/tournaments/new':   'Novo Torneio',
 }
 
 function deriveFallback(pathname: string): string {
   if (STATIC_TITLES[pathname]) return STATIC_TITLES[pathname]
-  if (pathname.startsWith('/tournaments/') && pathname.endsWith('/matches'))  return 'Partidas'
-  if (pathname.startsWith('/tournaments/') && pathname.endsWith('/ranking'))  return 'Ranking'
-  if (pathname.startsWith('/tournaments/') && pathname.endsWith('/tv'))       return 'Modo TV'
-  if (pathname.startsWith('/tournaments/') && pathname.endsWith('/tv-admin')) return 'TV Admin'
-  if (pathname.startsWith('/tournaments/'))  return 'Torneio'
-  if (pathname.startsWith('/leagues/'))      return 'Liga'
-  if (pathname.startsWith('/registrations/')) return 'Inscrições'
+  if (pathname.startsWith('/admin/tournaments/') && pathname.endsWith('/matches'))  return 'Partidas'
+  if (pathname.startsWith('/admin/tournaments/') && pathname.endsWith('/ranking'))  return 'Ranking'
+  if (pathname.startsWith('/admin/tournaments/') && pathname.endsWith('/tv-admin')) return 'TV Admin'
+  if (pathname.startsWith('/admin/tournaments/'))   return 'Torneio'
+  if (pathname.startsWith('/admin/leagues/'))       return 'Liga'
+  if (pathname.startsWith('/admin/registrations/')) return 'Inscrições'
+  if (pathname.startsWith('/registrations/'))       return 'Inscrições'
   return 'Rakka'
 }
 
@@ -45,7 +45,7 @@ export default function Topbar() {
       {/* Left: breadcrumb + page title */}
       <div className="flex items-center gap-3 min-w-0">
         {/* Back crumb — show only inside sub-pages */}
-        {pathname !== '/' && !pathname.startsWith('/leagues/new') && !pathname.startsWith('/tournaments/new') && (
+        {pathname !== '/admin' && !pathname.startsWith('/admin/leagues/new') && !pathname.startsWith('/admin/tournaments/new') && (
           <Link
             href={getParentHref(pathname)}
             className="text-xs font-bold transition-colors shrink-0 hidden xl:block"
@@ -89,8 +89,8 @@ export default function Topbar() {
 }
 
 function getParentHref(pathname: string): string {
-  if (pathname.startsWith('/tournaments/') && pathname !== '/tournaments/new') return '/'
-  if (pathname.startsWith('/leagues/')     && pathname !== '/leagues/new')     return '/leagues'
-  if (pathname.startsWith('/registrations/'))                                   return '/'
-  return '/'
+  if (pathname.startsWith('/admin/tournaments/') && pathname !== '/admin/tournaments/new') return '/admin'
+  if (pathname.startsWith('/admin/leagues/')     && pathname !== '/admin/leagues/new')     return '/admin/leagues'
+  if (pathname.startsWith('/admin/registrations/'))                                          return '/admin'
+  return '/admin'
 }

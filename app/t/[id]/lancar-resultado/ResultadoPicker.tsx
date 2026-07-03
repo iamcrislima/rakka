@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { isValidFinalScore, maxScore } from '@/lib/match-rules'
-import { submitMatchResult } from '@/app/tournaments/[id]/matches/actions'
+import { submitMatchResult } from '@/app/admin/tournaments/[id]/matches/actions'
 import type { Match, MatchRules } from '@/types'
 
 export interface MatchCardInfo {

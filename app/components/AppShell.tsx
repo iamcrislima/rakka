@@ -40,14 +40,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <nav className="flex items-center gap-1 ml-auto">
               <Link
-                href="/"
+                href="/admin"
                 className="text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors"
                 style={{ color: 'var(--bt-muted)' }}
               >
                 Torneios
               </Link>
               <Link
-                href="/leagues"
+                href="/admin/leagues"
                 className="text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors"
                 style={{ color: 'var(--bt-muted)' }}
               >

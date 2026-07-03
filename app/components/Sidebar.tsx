@@ -4,9 +4,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const NAV = [
-  { href: '/',                  label: 'Torneios',   icon: '🏆', exact: true  },
-  { href: '/leagues',           label: 'Ligas',      icon: '📊', exact: false },
-  { href: '/registrations/new', label: 'Inscrições', icon: '📋', exact: false },
+  { href: '/admin',                  label: 'Torneios',   icon: '🏆', exact: true  },
+  { href: '/admin/leagues',           label: 'Ligas',      icon: '📊', exact: false },
+  { href: '/admin/registrations/new', label: 'Inscrições', icon: '📋', exact: false },
 ]
 
 export default function Sidebar() {

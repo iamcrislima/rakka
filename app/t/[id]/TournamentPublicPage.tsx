@@ -162,7 +162,7 @@ export default function TournamentPublicPage({
             ))}
           </div>
           <a
-            href={`/tournaments/${tournament.id}/tv`}
+            href={`/t/${tournament.id}/tv`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-black uppercase tracking-wider whitespace-nowrap shrink-0 transition-colors"

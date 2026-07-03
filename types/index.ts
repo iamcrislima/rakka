@@ -77,6 +77,19 @@ export type CategoryGender = 'mens' | 'womens' | 'mixed'
 export type CategoryLevel  = 'E' | 'D' | 'C' | 'B' | 'Open'
 export type CategoryFormat = 'round_robin' | 'group_playoffs' | 'super8_misto'
 
+// ── Event mural ────────────────────────────────────────────────
+
+export type MuralPhotoStatus = 'pending' | 'approved' | 'rejected'
+
+export interface MuralPhoto {
+  id:            string
+  tournament_id: string
+  storage_path:  string
+  status:        MuralPhotoStatus
+  created_at:    string
+  moderated_at:  string | null
+}
+
 export interface Category {
   id:                  string
   tournament_id:       string

@@ -26,20 +26,25 @@ export async function middleware(request: NextRequest) {
   // Refresh session — must call getUser() (not getSession()) for security
   const { data: { user } } = await supabase.auth.getUser()
 
-  const isAuthRoute    = request.nextUrl.pathname.startsWith('/login') ||
-                         request.nextUrl.pathname.startsWith('/auth')
-  const isTournamentRoute = request.nextUrl.pathname.startsWith('/tournaments')
+  const isAuthRoute  = request.nextUrl.pathname.startsWith('/admin/login') ||
+                       request.nextUrl.pathname.startsWith('/auth')
+  // Everything under /admin is the organizer panel — real login required.
+  // This also covers /admin/registrations/[token]/manage: that screen used
+  // to be reachable by anyone holding the share token alone (no real auth
+  // check), which was a gap — being nested under /admin now closes it, the
+  // same as every other admin screen.
+  const isAdminRoute = request.nextUrl.pathname.startsWith('/admin') && !isAuthRoute
 
   // Redirect unauthenticated users to login (skip when SKIP_AUTH=true)
-  if (!user && isTournamentRoute && process.env.NEXT_PUBLIC_SKIP_AUTH !== 'true') {
-    const loginUrl = new URL('/login', request.url)
+  if (!user && isAdminRoute && process.env.NEXT_PUBLIC_SKIP_AUTH !== 'true') {
+    const loginUrl = new URL('/admin/login', request.url)
     loginUrl.searchParams.set('next', request.nextUrl.pathname)
     return NextResponse.redirect(loginUrl)
   }
 
   // Redirect authenticated users away from login
   if (user && isAuthRoute && !request.nextUrl.pathname.startsWith('/auth/callback')) {
-    return NextResponse.redirect(new URL('/', request.url))
+    return NextResponse.redirect(new URL('/admin', request.url))
   }
 
   return response
