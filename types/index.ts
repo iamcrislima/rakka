@@ -113,6 +113,7 @@ export interface Category {
   consolation_bracket: boolean
   gender:              CategoryGender | null
   level:               CategoryLevel | null
+  round_interval_minutes: number
   created_at:          string
 }
 

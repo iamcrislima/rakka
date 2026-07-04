@@ -16,6 +16,7 @@ import QRCode from 'qrcode'
 import { createClient } from '@/lib/supabase/client'
 import type { Tournament, Category, Court } from '@/types'
 import BackLink from '@/app/components/BackLink'
+import AdminPageContainer from '@/app/components/AdminPageContainer'
 
 interface Props {
   tournament: Pick<Tournament, 'id' | 'name'>
@@ -29,7 +30,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function SettingsPanel({ tournament, categories, courts }: Props) {
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6 animate-fade-in lg:py-4">
+    <AdminPageContainer className="space-y-6 animate-fade-in">
 
       {/* Header */}
       <div className="relative rounded-2xl p-5 overflow-hidden" style={{ background: 'linear-gradient(135deg, #161616 0%, #0A0A0A 100%)', border: '1px solid #242424' }}>
@@ -89,7 +90,7 @@ export default function SettingsPanel({ tournament, categories, courts }: Props)
         </div>
       </section>
 
-    </div>
+    </AdminPageContainer>
   )
 }
 

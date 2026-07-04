@@ -192,7 +192,7 @@ function ScheduledBadge({ scheduledAt }: { scheduledAt: string }) {
 
 // ── Info actions card ─────────────────────────────────────────
 
-function InfoActionsCard({ tournament, category, players, rules, finalsSeeds, matchSeeds }: HubProps) {
+function InfoActionsCard({ tournament, category, players, rules, finalsSeeds, matchSeeds, courts }: HubProps) {
   const supabase = createClient()
   const router   = useRouter()
   const groupA   = players.filter(p => p.position <= 4)
@@ -301,7 +301,7 @@ function InfoActionsCard({ tournament, category, players, rules, finalsSeeds, ma
         {canStart && (
           <div className="space-y-2 pt-1">
             <ShuffleGroupsButton tournamentId={tournament.id} categoryId={category.id} players={players} />
-            <StartGroupStageButton tournamentId={tournament.id} categoryId={category.id} players={players} matchSeeds={matchSeeds} />
+            <StartGroupStageButton tournamentId={tournament.id} categoryId={category.id} players={players} matchSeeds={matchSeeds} hasCourts={(courts ?? []).length > 0} />
           </div>
         )}
         {finalsSeeds && (
@@ -684,7 +684,7 @@ function GroupBracket({ matches, players }: { matches: Match[]; players: Player[
 
 // ── Info tab ──────────────────────────────────────────────────
 
-function InfoTab({ tournament, category, players, rules, finalsSeeds, matchSeeds }: HubProps) {
+function InfoTab({ tournament, category, players, rules, finalsSeeds, matchSeeds, courts }: HubProps) {
   const groupA   = players.filter(p => p.position <= 4)
   const groupB   = players.filter(p => p.position >= 5)
   const canStart = category.status === 'draft' && players.length === 8
@@ -722,7 +722,7 @@ function InfoTab({ tournament, category, players, rules, finalsSeeds, matchSeeds
       {canStart && (
         <div className="space-y-2.5">
           <ShuffleGroupsButton tournamentId={tournament.id} categoryId={category.id} players={players} />
-          <StartGroupStageButton tournamentId={tournament.id} categoryId={category.id} players={players} matchSeeds={matchSeeds} />
+          <StartGroupStageButton tournamentId={tournament.id} categoryId={category.id} players={players} matchSeeds={matchSeeds} hasCourts={(courts ?? []).length > 0} />
         </div>
       )}
       {finalsSeeds && (

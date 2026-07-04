@@ -14,12 +14,13 @@ import { useRouter } from 'next/navigation'
 import type { Tournament, Category, Player, Match, MatchRules, Court, PlayerGender } from '@/types'
 import type { MatchSeed } from '@/lib/match-generator'
 import { computeSuper8MistoResult, getCurrentSuper8MistoRound, type Super8MistoValidation, SUPER8_MISTO_MATCHES, SUPER8_MISTO_ROUNDS } from '@/lib/super8-misto'
+import { computeRoundSchedule, type RoundPrediction } from '@/lib/round-schedule'
 import { rulesHint } from '@/lib/match-rules'
 import MatchCard, { MatchDurationStats } from '../../MatchCard'
 import StartGroupStageButton from '../../StartGroupStageButton'
 import BackLink from '@/app/components/BackLink'
 
-type TabId = 'matches' | 'ranking'
+type TabId = 'matches' | 'players' | 'ranking'
 
 interface HubProps {
   tournament: Tournament
@@ -46,7 +47,7 @@ export default function Super8MistoHub(props: HubProps) {
       {/* Mobile tabs */}
       {hasMatches && (
         <div className="lg:hidden flex gap-1 mt-4 bg-[#1C1C1C] rounded-xl p-1">
-          {(['matches', 'ranking'] as TabId[]).map(t => (
+          {(['matches', 'players', 'ranking'] as TabId[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -54,7 +55,7 @@ export default function Super8MistoHub(props: HubProps) {
                 tab === t ? 'bg-[#161616] text-[#C8F135] shadow-sm' : 'text-[#888888]'
               }`}
             >
-              {t === 'matches' ? '🔀 Partidas' : '👑 Ranking'}
+              {t === 'matches' ? '🔀 Partidas' : t === 'players' ? '👤 Jogadores' : '👑 Ranking'}
             </button>
           ))}
         </div>
@@ -63,7 +64,9 @@ export default function Super8MistoHub(props: HubProps) {
       <div className="lg:hidden pt-4 pb-10">
         {!hasMatches
           ? <SetupPanel {...props} />
-          : tab === 'matches' ? <MatchesPanel {...props} /> : <RankingPanel {...props} />}
+          : tab === 'matches' ? <MatchesPanel {...props} />
+          : tab === 'players' ? <PlayersPanel {...props} />
+          : <RankingPanel {...props} />}
         {matchesComplete && <CeremonyLink tournamentId={tournament.id} categoryId={category.id} />}
         {allDone && <FinishCategoryButton categoryId={category.id} />}
       </div>
@@ -74,6 +77,7 @@ export default function Super8MistoHub(props: HubProps) {
           {!hasMatches ? <SetupPanel {...props} /> : <MatchesPanel {...props} />}
         </div>
         <div className="sticky top-24 space-y-4">
+          {hasMatches && <PlayersPanel {...props} />}
           {hasMatches && <RankingPanel {...props} />}
           {matchesComplete && <CeremonyLink tournamentId={tournament.id} categoryId={category.id} />}
           {allDone && <FinishCategoryButton categoryId={category.id} />}
@@ -142,6 +146,12 @@ function SetupPanel({ tournament, category, players, matchSeeds, validation, cou
     router.refresh()
   }
 
+  async function renamePlayer(id: string, name: string) {
+    const supabase = createClient()
+    await supabase.from('players').update({ name }).eq('id', id)
+    router.refresh()
+  }
+
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="bg-[#161616] rounded-2xl border border-[#242424] shadow-sm p-5 space-y-4">
@@ -150,8 +160,8 @@ function SetupPanel({ tournament, category, players, matchSeeds, validation, cou
           <span className="text-xs font-bold text-[#888888]">{men.length}/8 homens · {women.length}/8 mulheres</span>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <PlayerCount label="Homens"   list={men}   color="bg-[#C8F135]" needed={8} onDelete={deletePlayer} />
-          <PlayerCount label="Mulheres" list={women} color="bg-pink-500"   needed={8} onDelete={deletePlayer} />
+          <PlayerCount label="Homens"   list={men}   color="bg-[#C8F135]" needed={8} onDelete={deletePlayer} onRename={renamePlayer} />
+          <PlayerCount label="Mulheres" list={women} color="bg-pink-500"   needed={8} onDelete={deletePlayer} onRename={renamePlayer} />
         </div>
         {!validation.valid && (
           <p className="text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
@@ -174,6 +184,7 @@ function SetupPanel({ tournament, category, players, matchSeeds, validation, cou
             players={players}
             matchSeeds={matchSeeds}
             label="▶ Gerar Rodadas"
+            hasCourts={(courts ?? []).length > 0}
           />
         </div>
       )}
@@ -181,8 +192,10 @@ function SetupPanel({ tournament, category, players, matchSeeds, validation, cou
   )
 }
 
-function PlayerCount({ label, list, color, needed, onDelete }: {
-  label: string; list: Player[]; color: string; needed: number; onDelete: (id: string) => void
+function PlayerCount({ label, list, color, needed, onDelete, onRename }: {
+  label: string; list: Player[]; color: string; needed: number
+  onDelete: (id: string) => void
+  onRename: (id: string, name: string) => Promise<void>
 }) {
   const ok = list.length === needed
   return (
@@ -195,22 +208,84 @@ function PlayerCount({ label, list, color, needed, onDelete }: {
       </div>
       <div className="space-y-1">
         {list.map(p => (
-          <div key={p.id} className="flex items-center gap-1.5 bg-[#111111] rounded-lg px-2 py-1">
-            <span className={`w-4 h-4 rounded-full text-white text-[8px] font-black flex items-center justify-center shrink-0 ${color}`}>
-              {p.name[0]?.toUpperCase()}
-            </span>
-            <span className="flex-1 text-[11px] font-semibold text-[#888888] truncate">{p.name}</span>
-            <button
-              type="button"
-              onClick={() => onDelete(p.id)}
-              className="text-[#6B6B6B] hover:text-[#FF4444] transition-colors text-xs font-black px-0.5 shrink-0"
-            >
-              ×
-            </button>
-          </div>
+          <PlayerRow key={p.id} player={p} color={color} onRename={onRename} onDelete={onDelete} />
         ))}
         {list.length === 0 && <p className="text-[11px] text-[#6B6B6B]">—</p>}
       </div>
+    </div>
+  )
+}
+
+// ── Player row — name is always editable in place (pencil icon); gender is
+// never editable through this UI at all (pre- or post-generation) — changing
+// a player's gender would require re-running the man/woman rotation algorithm,
+// so the only supported path for that is delete + re-add. Delete itself is
+// only offered pre-generation (no `onDelete`), since once rounds exist every
+// match references these player ids directly. ──
+function PlayerRow({ player, color, onRename, onDelete }: {
+  player:   Player
+  color:    string
+  onRename: (id: string, name: string) => Promise<void>
+  onDelete?: (id: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue]     = useState(player.name)
+  const [saving, setSaving]   = useState(false)
+
+  async function save() {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === player.name) { setValue(player.name); setEditing(false); return }
+    setSaving(true)
+    await onRename(player.id, trimmed)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  function cancel() {
+    setValue(player.name)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5 bg-[#111111] rounded-lg px-2 py-1 border border-[#C8F135]/40">
+        <input
+          autoFocus
+          value={value}
+          disabled={saving}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel() }}
+          className="flex-1 min-w-0 bg-transparent text-[11px] font-semibold text-[#F0F0F0] focus:outline-none"
+        />
+        <button type="button" onClick={save} disabled={saving || !value.trim()} className="text-[#C8F135] text-xs font-black shrink-0 disabled:opacity-40">✓</button>
+        <button type="button" onClick={cancel} disabled={saving} className="text-[#6B6B6B] hover:text-[#F0F0F0] transition-colors text-xs font-black shrink-0">✕</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 bg-[#111111] rounded-lg px-2 py-1">
+      <span className={`w-4 h-4 rounded-full text-white text-[8px] font-black flex items-center justify-center shrink-0 ${color}`}>
+        {player.name[0]?.toUpperCase()}
+      </span>
+      <span className="flex-1 text-[11px] font-semibold text-[#888888] truncate">{player.name}</span>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        title="Editar nome"
+        className="text-[#6B6B6B] hover:text-[#C8F135] transition-colors text-xs shrink-0"
+      >
+        ✎
+      </button>
+      {onDelete && (
+        <button
+          type="button"
+          onClick={() => onDelete(player.id)}
+          className="text-[#6B6B6B] hover:text-[#FF4444] transition-colors text-xs font-black px-0.5 shrink-0"
+        >
+          ×
+        </button>
+      )}
     </div>
   )
 }
@@ -321,6 +396,20 @@ function ScheduleAndCourtsCard({ tournament, category, courts }: {
     router.refresh()
   }
 
+  // ── Round interval — default gap used to stagger PREDICTED round start
+  // times before any real match duration exists (see lib/round-schedule.ts).
+  const [intervalValue, setIntervalValue] = useState(category.round_interval_minutes ?? 30)
+  const [savingInterval, setSavingInterval] = useState(false)
+
+  async function saveInterval(minutes: number) {
+    const clamped = Math.max(5, Math.min(120, minutes))
+    setIntervalValue(clamped)
+    setSavingInterval(true)
+    await supabase.from('categories').update({ round_interval_minutes: clamped }).eq('id', category.id)
+    setSavingInterval(false)
+    router.refresh()
+  }
+
   return (
     <div className="bg-[#161616] rounded-2xl border border-[#242424] shadow-sm p-5 space-y-3">
       {/* Scheduled time */}
@@ -373,9 +462,37 @@ function ScheduleAndCourtsCard({ tournament, category, courts }: {
         )}
       </div>
 
-      {/* Courts — tournament-scoped, managed in /tv-admin */}
+      {/* Round interval — only matters once a start time is set; it's the
+          default gap used to predict round 2+ before real durations exist. */}
+      {category.scheduled_at && (
+        <div className="flex items-center justify-between px-3 py-2.5 bg-[#111111] border border-[#242424] rounded-xl gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm shrink-0">⏱️</span>
+            <span className="text-xs font-black text-[#888888] uppercase tracking-wide truncate">Intervalo entre rodadas</span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <input
+              type="number"
+              min={5}
+              max={120}
+              step={5}
+              value={intervalValue}
+              onChange={e => setIntervalValue(Number(e.target.value))}
+              onBlur={e => saveInterval(Number(e.target.value))}
+              disabled={savingInterval}
+              className="w-14 text-center bg-[#161616] border-2 border-[#242424] focus:border-[#C8F135] rounded-lg py-1 text-sm font-black text-[#F0F0F0] focus:outline-none
+                         [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <span className="text-xs text-[#888888] font-semibold">min</span>
+          </div>
+        </div>
+      )}
+
+      {/* Courts — tournament-scoped, managed in /tv-admin. Carries where we
+          came from so the organizer can jump straight back to this category
+          instead of re-navigating Torneios → Torneio → Categoria from scratch. */}
       <Link
-        href={`/admin/tournaments/${tournament.id}/tv-admin`}
+        href={`/admin/tournaments/${tournament.id}/tv-admin?from=${encodeURIComponent(`/admin/tournaments/${tournament.id}/categories/${category.id}`)}&label=${encodeURIComponent(category.name)}`}
         className="flex items-center justify-between px-3 py-2.5 bg-[#111111] border border-[#242424] rounded-xl hover:border-[#3a3a3a] transition-colors"
       >
         <div className="flex items-center gap-2">
@@ -403,6 +520,15 @@ function MatchesPanel({ tournament, category, players, matches, rules, courts }:
     .map(r => matches.filter(m => m.round === r))
     .filter(ms => ms.length > 0)
 
+  // Tick every 30s so "Atrasado" flips on automatically without a manual refresh.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(id)
+  }, [])
+
+  const schedule = computeRoundSchedule(matches, category.scheduled_at, category.round_interval_minutes ?? 30, new Date(now))
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center gap-2">
@@ -417,28 +543,54 @@ function MatchesPanel({ tournament, category, players, matches, rules, courts }:
 
       <MatchDurationStats matches={matches} />
 
-      {rounds.map((ms, idx) => (
-        <section key={idx} className="space-y-2.5">
-          <div className="flex items-center gap-2 px-0.5">
-            <span className="text-xs font-black uppercase tracking-widest text-[#C8F135]">Rodada {ms[0].round}</span>
-          </div>
-          <div className="stagger grid grid-cols-1 2xl:grid-cols-2 gap-2.5">
-            {ms.map(m => (
-              <MatchCard
-                key={m.id}
-                m={m}
-                name={name}
-                tournamentId={tournament.id}
-                categoryId={category.id}
-                rules={rules}
-                courts={courts}
-                scheduledAt={category.scheduled_at}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      {rounds.map((ms, idx) => {
+        const prediction = schedule.get(ms[0].round)
+        return (
+          <section key={idx} className="space-y-2.5">
+            <div className="flex items-center gap-2 px-0.5 flex-wrap">
+              <span className="text-xs font-black uppercase tracking-widest text-[#C8F135]">Rodada {ms[0].round}</span>
+              {prediction && !prediction.isComplete && <RoundTimingBadge prediction={prediction} />}
+            </div>
+            <div className="stagger grid grid-cols-1 2xl:grid-cols-2 gap-2.5">
+              {ms.map(m => (
+                <MatchCard
+                  key={m.id}
+                  m={m}
+                  name={name}
+                  tournamentId={tournament.id}
+                  categoryId={category.id}
+                  rules={rules}
+                  courts={courts}
+                  scheduledAt={category.scheduled_at}
+                />
+              ))}
+            </div>
+          </section>
+        )
+      })}
     </div>
+  )
+}
+
+// ── Round timing badge — "Previsto: HH:MM" for an estimate, or "Atrasado"
+// once the current time has passed a round's predicted start without it
+// having begun. Purely informational — doesn't gate/lock anything (that's
+// MatchCard's separate scheduledAt-based lock, used only for round 1). ──
+function RoundTimingBadge({ prediction }: { prediction: RoundPrediction }) {
+  const time = prediction.predictedStart.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+
+  if (prediction.isDelayed) {
+    return (
+      <span className="text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full bg-red-500/15 text-red-400">
+        ⚠️ Atrasado — previsto {time}
+      </span>
+    )
+  }
+
+  return (
+    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1C1C1C] text-[#888888]">
+      🕐 Previsto: {time}
+    </span>
   )
 }
 
@@ -471,6 +623,43 @@ function NextMatchCard({ match, name, courts }: {
         <span className="font-display text-base sm:text-lg font-bold text-[#F0F0F0]">
           {name(match.team2_p1)} + {name(match.team2_p2)}
         </span>
+      </div>
+    </div>
+  )
+}
+
+// ── Players panel (post-generation) — name-only edit. Once rounds are
+// generated every match references these player ids directly, so no
+// add/delete here — just a way to fix a typo without redoing the draw. ──
+
+function PlayersPanel({ players }: HubProps) {
+  const router = useRouter()
+  const men   = players.filter(p => p.gender === 'M')
+  const women = players.filter(p => p.gender === 'F')
+
+  async function renamePlayer(id: string, name: string) {
+    const supabase = createClient()
+    await supabase.from('players').update({ name }).eq('id', id)
+    router.refresh()
+  }
+
+  return (
+    <div className="bg-[#161616] rounded-2xl border border-[#242424] shadow-sm p-4 space-y-3 animate-fade-in">
+      <p className="text-[10px] font-black text-[#888888] uppercase tracking-widest">Jogadores cadastrados</p>
+      <p className="text-[11px] text-[#6B6B6B] -mt-2">Toque no lápis para corrigir um nome</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <span className="text-xs font-bold text-[#888888]">Homens</span>
+          <div className="space-y-1">
+            {men.map(p => <PlayerRow key={p.id} player={p} color="bg-[#C8F135]" onRename={renamePlayer} />)}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <span className="text-xs font-bold text-[#888888]">Mulheres</span>
+          <div className="space-y-1">
+            {women.map(p => <PlayerRow key={p.id} player={p} color="bg-pink-500" onRename={renamePlayer} />)}
+          </div>
+        </div>
       </div>
     </div>
   )

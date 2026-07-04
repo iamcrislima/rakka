@@ -8,6 +8,7 @@ import type { Tournament, Player, Match, Category, Court } from '@/types'
 import TournamentHub from './TournamentHub'
 import QuickActions, { type QuickActionSpec } from './QuickActions'
 import BackLink from '@/app/components/BackLink'
+import AdminPageContainer from '@/app/components/AdminPageContainer'
 
 // ── Status config ─────────────────────────────────────────────
 
@@ -197,7 +198,7 @@ function CategoryOverview({ tournament, categories, stats, progressByCategory, l
   ]
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6 animate-fade-in lg:py-4">
+    <AdminPageContainer className="space-y-6 animate-fade-in">
 
       {/* Header */}
       <div className="relative rounded-2xl p-5 overflow-hidden" style={{ background: 'linear-gradient(135deg, #161616 0%, #0A0A0A 100%)', border: '1px solid #242424' }}>
@@ -275,7 +276,7 @@ function CategoryOverview({ tournament, categories, stats, progressByCategory, l
         Adicionar categoria
       </Link>
 
-    </div>
+    </AdminPageContainer>
   )
 }
 

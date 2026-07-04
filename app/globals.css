@@ -43,7 +43,16 @@
 * { -webkit-tap-highlight-color: transparent; }
 
 /* ── Keyboard focus (a11y) ─────────────────────────── */
-:focus-visible {
+/* `:where(...)` pins this rule's specificity to zero, so ANY component
+   override (e.g. Tailwind's `focus:outline-none`, specificity 0-2-0) wins
+   automatically — no fighting over cascade layers needed. (Tried wrapping
+   this in `@layer utilities` first, but Tailwind v4's compiler silently
+   drops that wrapper for plain selectors — verified in the compiled
+   output — so it never actually applied. `:where()` sidesteps the whole
+   problem.) Without this, the rule was unconditionally winning over every
+   `focus:outline-none` in the app, making inputs look permanently "stuck"
+   with a glowing ring the component had no way to turn off. */
+:where(:focus-visible) {
   outline: 2px solid var(--bt-neon);
   outline-offset: 2px;
 }

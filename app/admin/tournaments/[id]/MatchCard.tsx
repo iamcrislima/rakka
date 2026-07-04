@@ -258,6 +258,7 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
   const [now,     setNow]         = useState(() => Date.now())
   const [startedAt, setStartedAt] = useState<string | null>(m.started_at)
   const [startingMatch, setStartingMatch] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
 
   // Tick every second so countdown updates and lock expires automatically
   useEffect(() => {
@@ -283,11 +284,15 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
   async function handleStart() {
     if (startingMatch || startedAt) return
     setStartingMatch(true)
+    setStartError(null)
     const iso = new Date().toISOString()
     setStartedAt(iso) // optimistic — clock starts ticking immediately
     const result = await startMatch(m.id)
     setStartingMatch(false)
-    if (!result.ok) setStartedAt(null)
+    if (!result.ok) {
+      setStartedAt(null) // roll back the optimistic start — server rejected it (e.g. player conflict)
+      setStartError(result.error ?? 'Não foi possível iniciar a partida.')
+    }
   }
 
   const isDone      = m.status === 'done' || saved
@@ -385,10 +390,15 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
   return (
     <div className={`rounded-2xl overflow-hidden shadow-sm ${cardBorder}`}>
 
-      {/* ── Header ── */}
+      {/* ── Header — every badge here is `inline-flex items-center leading-none`
+          so its own emoji+text sits centered within its own pill, regardless
+          of the emoji glyph's ascent/descent (which differs from the
+          surrounding font and, left at the default line-height, makes pills
+          look glued to the top of the row even though the row itself
+          already centers them via items-center). ── */}
       <div className={`flex items-center justify-between px-4 py-2 ${headerBg}`}>
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`text-[11px] font-black uppercase tracking-widest shrink-0 ${
+          <span className={`inline-flex items-center leading-none text-[11px] font-black uppercase tracking-widest shrink-0 ${
             isFinals && !isDone ? 'text-amber-400' : isDone ? 'text-emerald-400' : 'text-[#888888]'
           }`}>
             {isFinal        ? '🏆 Grande Final'    :
@@ -396,7 +406,7 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
                              `Rodada ${m.round}`}
           </span>
           {courtId && courts && courts.length > 0 && (
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full truncate max-w-[120px] ${
+            <span className={`inline-flex items-center leading-none text-[10px] font-bold px-2 py-0.5 rounded-full truncate max-w-[120px] ${
               isFinals && !isDone ? 'bg-amber-500/15 text-amber-400' :
               isDone             ? 'bg-emerald-500/15 text-emerald-400' :
                                    'bg-[#1C1C1C] text-[#888888]'
@@ -405,18 +415,18 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
             </span>
           )}
           {isDone && m.duration_seconds != null && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1C1C1C] text-[#888888] shrink-0">
+            <span className="inline-flex items-center leading-none text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1C1C1C] text-[#888888] shrink-0">
               ⏱ {formatDuration(m.duration_seconds)}
             </span>
           )}
           {!isDone && !isLocked && startedAt && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 shrink-0 tabular-nums">
+            <span className="inline-flex items-center leading-none text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 shrink-0 tabular-nums">
               ⏱ {formatElapsed(elapsedSeconds)}
             </span>
           )}
         </div>
         <span
-          className="text-[10px] font-black uppercase tracking-wide shrink-0 px-2 py-0.5 rounded-full"
+          className="inline-flex items-center leading-none text-[10px] font-black uppercase tracking-wide shrink-0 px-2 py-0.5 rounded-full"
           style={{ background: statusBadge.bg, color: statusBadge.color }}
         >
           {statusBadge.label}
@@ -546,7 +556,10 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
         </div>
       ) : notStarted ? (
         /* ── Score entry is gated behind this — nothing to confirm yet ── */
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 space-y-2">
+          {startError && (
+            <p className="text-center text-xs font-bold text-[#FF4444] animate-fade-in">⚠️ {startError}</p>
+          )}
           <button
             onClick={handleStart}
             disabled={startingMatch}

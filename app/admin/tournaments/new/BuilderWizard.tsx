@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { PRESETS, deuceOptions, rulesHint, detectPreset, toMatchRules, DEFAULT_TARGET_SUM } from '@/lib/match-rules'
 import type { MatchRules, CategoryFormat, CategoryGender, CategoryLevel } from '@/types'
 import { createTournamentFromBuilder, type CategoryInput } from './actions'
+import AdminPageContainer from '@/app/components/AdminPageContainer'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ const GENDER_LABEL: Record<CategoryGender, string> = {
 const FORMAT_OPTS: { value: CategoryFormat; label: string; desc: string }[] = [
   { value: 'round_robin',    label: 'Round Robin',        desc: 'Todos jogam contra todos' },
   { value: 'group_playoffs', label: 'Grupos + Playoffs',  desc: 'Top 2 avançam para o mata-mata' },
-  { value: 'super8_misto',   label: 'Super Oito Misto',   desc: '8H+8F · duplas rotativas, sem dupla fixa · Rei/Rainha da Quadra' },
+  { value: 'super8_misto',   label: 'Super Oito Misto',   desc: '8M+8F · duplas rotativas, sem dupla fixa · Rei/Rainha da Quadra' },
 ]
 
 function makeCategoryName(gender: CategoryGender | null, level: CategoryLevel | null): string {
@@ -123,8 +124,9 @@ function StepBasics({ state, setState }: {
         <p className="text-sm text-[#888888] mt-1">Como vamos chamar este evento?</p>
       </div>
 
-      {/* Name */}
-      <div className="space-y-2">
+      {/* Name — capped narrower than the step column itself so a single-line
+          field doesn't turn into a giant bar just because the page is wide. */}
+      <div className="space-y-2 max-w-md">
         <label className="text-xs font-black text-[#888888] uppercase tracking-widest">
           Nome do evento
         </label>
@@ -163,12 +165,19 @@ function StepBasics({ state, setState }: {
               key={opt.value}
               type="button"
               onClick={() => setState(s => ({ ...s, type: opt.value }))}
-              className={`flex flex-col gap-2 p-4 rounded-2xl border-2 text-left transition-all ${
+              className={`relative flex flex-col gap-2 p-4 rounded-2xl text-left transition-all ${
                 state.type === opt.value
-                  ? 'border-[#C8F135] bg-[#1C1C1C]'
-                  : 'border-[#242424] hover:border-[#3a3a3a] bg-[#161616]'
+                  ? 'border-[3px] border-[#C8F135] bg-[#1C1C1C]'
+                  : 'border-2 border-[#242424] hover:border-[#3a3a3a] bg-[#161616]'
               }`}
             >
+              {/* Filled checkmark badge — "selected" is a distinct concept
+                  from the keyboard focus ring, not just a color match. */}
+              {state.type === opt.value && (
+                <span className="absolute top-3 right-3 w-5 h-5 rounded-full bg-[#C8F135] text-[#0A0A0A] text-[11px] font-black flex items-center justify-center leading-none">
+                  ✓
+                </span>
+              )}
               <span className="text-3xl">{opt.icon}</span>
               <div>
                 <p className={`font-black text-sm ${state.type === opt.value ? 'text-[#C8F135]' : 'text-[#F0F0F0]'}`}>
@@ -356,7 +365,7 @@ function StepCategories({ state, setState }: {
       </div>
 
       {/* Gender/level matrix */}
-      <div className="space-y-3">
+      <div className="space-y-3 max-w-2xl">
         <p className="text-xs font-black text-[#888888] uppercase tracking-widest">Adicionar categoria</p>
 
         {/* Gender tabs */}
@@ -400,7 +409,7 @@ function StepCategories({ state, setState }: {
       </div>
 
       {/* Custom category */}
-      <div>
+      <div className="max-w-2xl">
         {!showCustom ? (
           <button
             type="button"
@@ -444,15 +453,17 @@ function StepCategories({ state, setState }: {
           <p className="text-xs font-black text-[#888888] uppercase tracking-widest">
             {state.categories.length} categori{state.categories.length !== 1 ? 'as' : 'a'} selecionada{state.categories.length !== 1 ? 's' : ''}
           </p>
-          {state.categories.map(cat => (
-            <CategoryCard
-              key={cat._key}
-              cat={cat}
-              isDoubles={isDoubles}
-              onUpdate={patch => updateCat(cat._key, patch)}
-              onRemove={() => removeCat(cat._key)}
-            />
-          ))}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            {state.categories.map(cat => (
+              <CategoryCard
+                key={cat._key}
+                cat={cat}
+                isDoubles={isDoubles}
+                onUpdate={patch => updateCat(cat._key, patch)}
+                onRemove={() => removeCat(cat._key)}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -497,7 +508,7 @@ function StepEntry({ state, setState }: {
       </div>
 
       {/* Apply all shortcuts */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 max-w-2xl">
         <button type="button" onClick={() => applyAll('manual')}
           className="flex-1 py-2 text-xs font-bold border-2 border-[#242424] rounded-xl text-[#888888] hover:border-[#3a3a3a] transition-colors">
           Manual para todas
@@ -509,7 +520,7 @@ function StepEntry({ state, setState }: {
       </div>
 
       {/* Per-category */}
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {state.categories.map(cat => (
           <div key={cat._key} className="bg-[#161616] border-2 border-[#242424] rounded-2xl p-4 space-y-3">
             <div className="flex items-center gap-2">
@@ -741,7 +752,7 @@ function StepRules({ state, setState }: {
         <p className="text-sm text-[#888888] mt-1">Configure o formato de cada categoria.</p>
       </div>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {state.categories.map((cat, i) => (
           <div key={cat._key} className="bg-[#161616] border-2 border-[#242424] rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -802,7 +813,7 @@ function StepPayment({ state, setState }: {
         </p>
       </div>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {regCats.map(cat => (
           <div key={cat._key} className="bg-[#161616] border-2 border-[#242424] rounded-2xl p-4 space-y-4">
             <div className="flex items-center gap-2">
@@ -917,7 +928,7 @@ function StepReview({ state, submitting, error }: {
         <p className="text-sm text-[#888888] mt-1">Revise antes de criar.</p>
       </div>
 
-      <div className="rounded-2xl p-5 space-y-1 border border-[#242424]">
+      <div className="rounded-2xl p-5 space-y-1 border border-[#242424] max-w-2xl">
         <p className="text-[10px] font-black text-[#888888] uppercase tracking-widest">Torneio</p>
         <p className="text-xl font-black text-[#F0F0F0] leading-tight">{state.tournamentName || '—'}</p>
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#1C1C1C] rounded-full text-xs font-bold text-[#888888]">
@@ -929,34 +940,36 @@ function StepReview({ state, submitting, error }: {
         <p className="text-xs font-black text-[#888888] uppercase tracking-widest">
           {state.categories.length} categori{state.categories.length !== 1 ? 'as' : 'a'}
         </p>
-        {state.categories.map(cat => {
-          const rules: MatchRules = toMatchRules(cat)
-          return (
-            <div key={cat._key} className="bg-[#161616] border border-[#242424] rounded-2xl p-4 space-y-1.5 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-black text-[#F0F0F0]">{cat.name}</p>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  cat.entryMode === 'registration'
-                    ? 'bg-emerald-500/15 text-emerald-400'
-                    : 'bg-[#1C1C1C] text-[#888888]'
-                }`}>
-                  {ENTRY_LABEL[cat.entryMode]}
-                </span>
-              </div>
-              <p className="text-xs text-[#888888] font-medium">
-                {cat.playerLimit} {isDoubles ? 'duplas' : 'jogadores'}
-                {' · '}{FORMAT_LABEL[cat.format]}
-                {cat.format === 'group_playoffs' && cat.consolationBracket && ' · com consolação'}
-                {' · '}{rulesHint(rules)}
-              </p>
-              {cat.entryMode === 'registration' && cat.priceEnabled && cat.price && (
-                <p className="text-xs font-bold text-[#C8F135]">
-                  R$ {parseFloat(cat.price).toFixed(2)} / {cat.paymentMode === 'pair' ? 'par' : isDoubles ? 'dupla' : 'jogador'}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          {state.categories.map(cat => {
+            const rules: MatchRules = toMatchRules(cat)
+            return (
+              <div key={cat._key} className="bg-[#161616] border border-[#242424] rounded-2xl p-4 space-y-1.5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-black text-[#F0F0F0]">{cat.name}</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    cat.entryMode === 'registration'
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : 'bg-[#1C1C1C] text-[#888888]'
+                  }`}>
+                    {ENTRY_LABEL[cat.entryMode]}
+                  </span>
+                </div>
+                <p className="text-xs text-[#888888] font-medium">
+                  {cat.playerLimit} {isDoubles ? 'duplas' : 'jogadores'}
+                  {' · '}{FORMAT_LABEL[cat.format]}
+                  {cat.format === 'group_playoffs' && cat.consolationBracket && ' · com consolação'}
+                  {' · '}{rulesHint(rules)}
                 </p>
-              )}
-            </div>
-          )
-        })}
+                {cat.entryMode === 'registration' && cat.priceEnabled && cat.price && (
+                  <p className="text-xs font-bold text-[#C8F135]">
+                    R$ {parseFloat(cat.price).toFixed(2)} / {cat.paymentMode === 'pair' ? 'par' : isDoubles ? 'dupla' : 'jogador'}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {error && (
@@ -1142,71 +1155,78 @@ export default function BuilderWizard() {
 
   if (success) {
     return (
-      <div className="max-w-lg mx-auto lg:py-4 animate-fade-in">
-        <SuccessView
-          tournamentId={success.id}
-          tournamentName={success.name}
-          registrationLinks={success.registrationLinks}
-          manualCategories={success.manualCategories}
-        />
-      </div>
+      <AdminPageContainer className="animate-fade-in">
+        <div className="max-w-2xl mx-auto">
+          <SuccessView
+            tournamentId={success.id}
+            tournamentName={success.name}
+            registrationLinks={success.registrationLinks}
+            manualCategories={success.manualCategories}
+          />
+        </div>
+      </AdminPageContainer>
     )
   }
 
   return (
-    <div className="max-w-lg mx-auto space-y-6 lg:py-4">
+    <AdminPageContainer>
+      {/* Full page width now, matching every other admin screen — only the
+          actual free-text inputs (see StepBasics, the custom-category
+          field) get their own narrow cap, not the whole step column. */}
+      <div className="space-y-6">
 
-      <StepDots steps={steps} current={stepIdx} />
+        <StepDots steps={steps} current={stepIdx} />
 
-      <div className="min-h-[380px]">
-        {stepId === 'basics'     && <StepBasics     state={state} setState={setState} />}
-        {stepId === 'categories' && <StepCategories state={state} setState={setState} />}
-        {stepId === 'entry'      && <StepEntry      state={state} setState={setState} />}
-        {stepId === 'rules'      && <StepRules      state={state} setState={setState} />}
-        {stepId === 'payment'    && <StepPayment    state={state} setState={setState} />}
-        {stepId === 'review'     && (
-          <StepReview state={state} submitting={submitting} error={error} />
-        )}
+        <div className="min-h-[380px]">
+          {stepId === 'basics'     && <StepBasics     state={state} setState={setState} />}
+          {stepId === 'categories' && <StepCategories state={state} setState={setState} />}
+          {stepId === 'entry'      && <StepEntry      state={state} setState={setState} />}
+          {stepId === 'rules'      && <StepRules      state={state} setState={setState} />}
+          {stepId === 'payment'    && <StepPayment    state={state} setState={setState} />}
+          {stepId === 'review'     && (
+            <StepReview state={state} submitting={submitting} error={error} />
+          )}
+        </div>
+
+        <div className="flex gap-3 pt-2 max-w-md">
+          {!isFirst && (
+            <button
+              type="button"
+              onClick={back}
+              disabled={submitting}
+              className="px-6 py-3 border-2 border-[#242424] text-[#888888] font-bold rounded-xl hover:border-[#3a3a3a] transition-colors disabled:opacity-40"
+            >
+              ← Voltar
+            </button>
+          )}
+          {isLast ? (
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={submitting || state.categories.length === 0}
+              className="flex-1 py-3.5 btn-primary flex-1 py-3.5 font-black disabled:opacity-40 active:scale-[0.97] transition-transform"
+            >
+              {submitting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Criando...
+                </span>
+              ) : (
+                '🎾 Criar torneio'
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={next}
+              disabled={!canNext}
+              className="flex-1 py-3 bg-[#C8F135] text-[#0A0A0A] font-black rounded-xl disabled:opacity-40 hover:bg-[#D4F54A] transition-colors"
+            >
+              Próximo →
+            </button>
+          )}
+        </div>
       </div>
-
-      <div className="flex gap-3 pt-2">
-        {!isFirst && (
-          <button
-            type="button"
-            onClick={back}
-            disabled={submitting}
-            className="px-6 py-3 border-2 border-[#242424] text-[#888888] font-bold rounded-xl hover:border-[#3a3a3a] transition-colors disabled:opacity-40"
-          >
-            ← Voltar
-          </button>
-        )}
-        {isLast ? (
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={submitting || state.categories.length === 0}
-            className="flex-1 py-3.5 btn-primary flex-1 py-3.5 font-black disabled:opacity-40 active:scale-[0.97] transition-transform"
-          >
-            {submitting ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                Criando...
-              </span>
-            ) : (
-              '🎾 Criar torneio'
-            )}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={next}
-            disabled={!canNext}
-            className="flex-1 py-3 bg-[#C8F135] text-[#0A0A0A] font-black rounded-xl disabled:opacity-40 hover:bg-[#D4F54A] transition-colors"
-          >
-            Próximo →
-          </button>
-        )}
-      </div>
-    </div>
+    </AdminPageContainer>
   )
 }

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import type { Tournament } from '@/types'
+import AdminPageContainer from '@/app/components/AdminPageContainer'
 
 const STATUS: Record<string, { label: string; dot: string; text: string; shape: string }> = {
   draft:       { label: 'Rascunho',     dot: 'bg-neutral-500',              text: 'text-neutral-400', shape: '○' },
@@ -33,7 +34,7 @@ export default async function HomePage() {
   const rest   = tournaments.filter(t => t.status !== 'group_stage' && t.status !== 'finals')
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto lg:py-4">
+    <AdminPageContainer className="space-y-6 animate-fade-in">
 
       {/* Hero */}
       <div className="relative rounded-2xl p-5 overflow-hidden border" style={{ background: 'var(--bt-card)', borderColor: 'var(--bt-border)' }}>
@@ -93,7 +94,7 @@ export default async function HomePage() {
         </div>
       )}
 
-    </div>
+    </AdminPageContainer>
   )
 }
 

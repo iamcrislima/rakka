@@ -27,7 +27,7 @@ const TIEBREAK_OPTIONS: { value: MatchRules['tiebreak_to']; label: string }[] = 
 
 const FORMAT_CHOICES: { value: CategoryFormat; label: string; desc: string; icon: string }[] = [
   { value: 'group_playoffs', label: 'Grupos tradicionais', desc: '8 jogadores · duplas fixas por grupo', icon: '🏆' },
-  { value: 'super8_misto',   label: 'Super Oito Misto',    desc: '8H + 8F · duplas rotativas · Rei/Rainha da Quadra', icon: '🔀' },
+  { value: 'super8_misto',   label: 'Super Oito Misto',    desc: '8M + 8F · duplas rotativas · Rei/Rainha da Quadra', icon: '🔀' },
 ]
 
 export default function NewCategoryPage() {

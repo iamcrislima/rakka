@@ -4,12 +4,27 @@ import { useState, useEffect, useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { autoAssignCourts, clearCourtAssignments } from './actions'
+import { startMatch } from '../matches/actions'
 import type { TVContent, TVContentType, Court, Match } from '@/types'
+import AdminPageContainer from '@/app/components/AdminPageContainer'
+import BackLink from '@/app/components/BackLink'
+
+// Deterministic per-category color cycle — just needs to visually tell
+// categories apart at a glance, not carry any semantic meaning.
+const CATEGORY_BADGE_COLORS = [
+  'bg-sky-500/15 text-sky-400',
+  'bg-violet-500/15 text-violet-400',
+  'bg-amber-500/15 text-amber-400',
+  'bg-emerald-500/15 text-emerald-400',
+  'bg-pink-500/15 text-pink-400',
+  'bg-orange-500/15 text-orange-400',
+]
 
 interface Props {
   tournamentId: string
   items:        TVContent[]
   courts:       Court[]
+  backTo?:      { href: string; label: string } | null
 }
 
 const TYPES: { value: TVContentType; label: string; icon: string; desc: string }[] = [
@@ -209,33 +224,56 @@ const STAGE_SHORT: Record<string, string> = {
 // ── Próximas chamadas — a quick-scan "what to call next, per court" tool ──
 // for the organizer walking between courts. Different job than Modo TV
 // (which is the public-facing screen): this is read-first, one row per
-// court, current match called out separately from the next one to summon.
+// court, current match called out separately from the next 2-3 to summon.
+// Cross-category by design: a court cycles through whichever categories
+// share it, so this can't be scoped to one category without hiding exactly
+// the thing the organizer is walking over to check.
+
+interface CategoryInfo { name: string; color: string }
 
 function NextCallsSection({ tournamentId, courts }: { tournamentId: string; courts: Court[] }) {
   const supabase = createClient()
-  const [matches, setMatches] = useState<Match[]>([])
-  const [players, setPlayers] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(true)
+  const [matches, setMatches]       = useState<Match[]>([])
+  const [players, setPlayers]       = useState<Record<string, string>>({})
+  const [categories, setCategories] = useState<Record<string, CategoryInfo>>({})
+  const [loading, setLoading]       = useState(true)
+  const [startingId, setStartingId] = useState<string | null>(null)
+  const [startErrors, setStartErrors] = useState<Record<string, string>>({}) // courtId -> message
 
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      const [{ data: ms }, { data: ps }] = await Promise.all([
-        supabase.from('matches').select('*').eq('tournament_id', tournamentId).eq('status', 'pending'),
-        supabase.from('players').select('id, name').eq('tournament_id', tournamentId),
-      ])
-      if (cancelled) return
-      setMatches((ms ?? []) as Match[])
-      const nameMap: Record<string, string> = {}
-      for (const p of (ps ?? [])) nameMap[p.id] = (p.name as string).split(' ')[0] ?? p.name
-      setPlayers(nameMap)
-      setLoading(false)
-    }
-    load()
-    return () => { cancelled = true }
-  }, [tournamentId]) // eslint-disable-line react-hooks/exhaustive-deps
+  async function load() {
+    const [{ data: ms }, { data: ps }, { data: cats }] = await Promise.all([
+      supabase.from('matches').select('*').eq('tournament_id', tournamentId).eq('status', 'pending'),
+      supabase.from('players').select('id, name').eq('tournament_id', tournamentId),
+      supabase.from('categories').select('id, name').eq('tournament_id', tournamentId),
+    ])
+    setMatches((ms ?? []) as Match[])
+    const nameMap: Record<string, string> = {}
+    for (const p of (ps ?? [])) nameMap[p.id] = (p.name as string).split(' ')[0] ?? p.name
+    setPlayers(nameMap)
+    const catMap: Record<string, CategoryInfo> = {}
+    ;(cats ?? []).forEach((c: { id: string; name: string }, i: number) => {
+      catMap[c.id] = { name: c.name, color: CATEGORY_BADGE_COLORS[i % CATEGORY_BADGE_COLORS.length] }
+    })
+    setCategories(catMap)
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [tournamentId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function n(id: string) { return players[id] ?? '?' }
+  function catOf(m: Match): CategoryInfo | undefined { return m.category_id ? categories[m.category_id] : undefined }
+
+  async function handleStart(matchId: string, courtId: string) {
+    setStartingId(matchId)
+    setStartErrors(prev => { const next = { ...prev }; delete next[courtId]; return next })
+    const result = await startMatch(matchId)
+    setStartingId(null)
+    if (!result.ok) {
+      setStartErrors(prev => ({ ...prev, [courtId]: result.error ?? 'Não foi possível iniciar.' }))
+    } else {
+      await load()
+    }
+  }
 
   if (loading || courts.length === 0) return null
 
@@ -245,43 +283,79 @@ function NextCallsSection({ tournamentId, courts }: { tournamentId: string; cour
       .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
     return {
       court,
-      current:    queue.find(m => m.started_at) ?? null,
-      nextToCall: queue.find(m => !m.started_at) ?? null,
+      current:  queue.find(m => m.started_at) ?? null,
+      upcoming: queue.filter(m => !m.started_at).slice(0, 3),
     }
   })
 
-  if (rows.every(r => !r.current && !r.nextToCall)) return null
+  if (rows.every(r => !r.current && r.upcoming.length === 0)) return null
 
   return (
     <div className="bg-[#161616] rounded-2xl border-2 border-[#C8F135]/30 shadow-sm overflow-hidden">
       <div className="px-5 py-3.5 bg-[#C8F135]/10 border-b border-[#242424] flex items-center gap-2">
         <span className="text-sm">📢</span>
-        <p className="text-xs font-black text-[#C8F135] uppercase tracking-widest">Próximas chamadas</p>
+        <p className="text-xs font-black text-[#C8F135] uppercase tracking-widest">Quadras — todas as categorias</p>
       </div>
       <div className="divide-y divide-[#242424]">
-        {rows.map(({ court, current, nextToCall }) => (
-          <div key={court.id} className="px-5 py-4 flex items-center gap-4">
-            <div className="w-36 shrink-0">
+        {rows.map(({ court, current, upcoming }) => (
+          <div key={court.id} className="px-5 py-4 space-y-2">
+            <div className="flex items-center justify-between">
               <p className="text-xs font-black text-[#F0F0F0] truncate">🏟️ {court.name}</p>
               {current && (
-                <span className="text-[9px] font-bold text-red-400 uppercase tracking-wide">🔴 Em andamento</span>
+                <span className="text-[9px] font-bold text-red-400 uppercase tracking-wide shrink-0">🔴 Em andamento</span>
               )}
             </div>
-            <div className="flex-1 min-w-0">
-              {nextToCall ? (
-                <p className="text-sm font-bold text-[#F0F0F0] truncate">
-                  <span className="text-[#C8F135]">▶</span>{' '}
-                  {n(nextToCall.team1_p1)} · {n(nextToCall.team1_p2)}{' '}
-                  <span className="text-[#6B6B6B] font-normal">vs</span>{' '}
-                  {n(nextToCall.team2_p1)} · {n(nextToCall.team2_p2)}
-                </p>
-              ) : (
-                <p className="text-sm font-bold text-[#6B6B6B]">— nenhuma partida na fila —</p>
-              )}
-            </div>
+
+            {current && <CallRow match={current} catInfo={catOf(current)} n={n} label="Agora" />}
+
+            {upcoming.length === 0 && !current && (
+              <p className="text-sm font-bold text-[#6B6B6B]">— nenhuma partida na fila —</p>
+            )}
+
+            {upcoming.map((m, i) => (
+              <div key={m.id} className="flex items-center gap-2">
+                <CallRow match={m} catInfo={catOf(m)} n={n} label={i === 0 ? 'Próxima' : undefined} />
+                {i === 0 && !current && (
+                  <button
+                    onClick={() => handleStart(m.id, court.id)}
+                    disabled={startingId === m.id}
+                    className="shrink-0 text-[10px] font-black uppercase tracking-wide px-2.5 py-1.5 rounded-lg bg-[#C8F135] text-[#0A0A0A] hover:bg-[#D4F54A] disabled:opacity-50 transition-colors"
+                  >
+                    {startingId === m.id ? '...' : '▶ Iniciar'}
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {startErrors[court.id] && (
+              <p className="text-[11px] font-bold text-[#FF4444] animate-fade-in">⚠️ {startErrors[court.id]}</p>
+            )}
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function CallRow({ match, catInfo, n, label }: {
+  match: Match
+  catInfo?: CategoryInfo
+  n: (id: string) => string
+  label?: string
+}) {
+  return (
+    <div className="flex-1 min-w-0 flex items-center gap-2">
+      {label && <span className="shrink-0 text-[9px] font-black text-[#6B6B6B] uppercase tracking-wide">{label}</span>}
+      {catInfo && (
+        <span className={`shrink-0 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded ${catInfo.color}`}>
+          {catInfo.name}
+        </span>
+      )}
+      <p className="text-sm font-bold text-[#F0F0F0] truncate">
+        {n(match.team1_p1)} · {n(match.team1_p2)}{' '}
+        <span className="text-[#6B6B6B] font-normal">vs</span>{' '}
+        {n(match.team2_p1)} · {n(match.team2_p2)}
+      </p>
     </div>
   )
 }
@@ -868,7 +942,7 @@ function ContentItemCard({ item, onEdit, onToggle, onDelete, onMove, isFirst, is
 
 // ── Root panel ────────────────────────────────────────────────
 
-export default function TVAdminPanel({ tournamentId, items: initialItems, courts }: Props) {
+export default function TVAdminPanel({ tournamentId, items: initialItems, courts, backTo }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [items, setItems]     = useState<TVContent[]>(initialItems)
@@ -917,7 +991,14 @@ export default function TVAdminPanel({ tournamentId, items: initialItems, courts
   const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order)
 
   return (
-    <div className="space-y-5 animate-fade-in max-w-[1400px] mx-auto lg:py-4">
+    <AdminPageContainer className="space-y-5 animate-fade-in">
+
+      {/* Back link — only present when we arrived from a specific category,
+          so the organizer can jump straight back instead of re-navigating
+          the sidebar from scratch. */}
+      {backTo && (
+        <BackLink href={backTo.href} label={`Voltar para ${backTo.label}`} className="text-[#888888] hover:text-[#F0F0F0] text-sm font-bold" />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1016,6 +1097,6 @@ export default function TVAdminPanel({ tournamentId, items: initialItems, courts
         </div>
       )}
 
-    </div>
+    </AdminPageContainer>
   )
 }

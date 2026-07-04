@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { autoAssignCourts } from './tv-admin/actions'
 import type { Player } from '@/types'
 import type { MatchSeed } from '@/lib/match-generator'
 
@@ -12,9 +13,10 @@ interface Props {
   players:      Player[]
   matchSeeds:   MatchSeed[]
   label?:       string
+  hasCourts?:   boolean  // when true, newly generated matches are auto-distributed across courts
 }
 
-export default function StartGroupStageButton({ tournamentId, categoryId, matchSeeds, label = '▶ Iniciar Fase de Grupos' }: Props) {
+export default function StartGroupStageButton({ tournamentId, categoryId, matchSeeds, label = '▶ Iniciar Fase de Grupos', hasCourts = false }: Props) {
   const router    = useRouter()
   const [loading, setLoading] = useState(false)
 
@@ -40,6 +42,14 @@ export default function StartGroupStageButton({ tournamentId, categoryId, matchS
           .eq('status', 'draft')       // only advance, never regress
       } else {
         await supabase.from('tournaments').update({ status: 'group_stage' }).eq('id', tournamentId)
+      }
+
+      // Default behavior: if courts are already registered, distribute the
+      // freshly generated matches across them right away — no separate
+      // manual "auto-distribute" step required. Organizers can still
+      // reassign/reorder afterwards from the courts screen.
+      if (hasCourts) {
+        await autoAssignCourts(tournamentId, { sameGroupSameCourt: false })
       }
     }
 
