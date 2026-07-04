@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import QRCode from 'qrcode'
 import { createClient } from '@/lib/supabase/client'
 import type { Tournament, Category, Court } from '@/types'
+import BackLink from '@/app/components/BackLink'
 
 interface Props {
   tournament: Pick<Tournament, 'id' | 'name'>
@@ -28,13 +29,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function SettingsPanel({ tournament, categories, courts }: Props) {
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in lg:py-4">
+    <div className="max-w-[1400px] mx-auto space-y-6 animate-fade-in lg:py-4">
 
       {/* Header */}
       <div className="relative rounded-2xl p-5 overflow-hidden" style={{ background: 'linear-gradient(135deg, #161616 0%, #0A0A0A 100%)', border: '1px solid #242424' }}>
-        <Link href={`/admin/tournaments/${tournament.id}`} className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-[#888888] hover:text-[#F0F0F0] transition-colors mb-2">
-          ← {tournament.name}
-        </Link>
+        <BackLink href={`/admin/tournaments/${tournament.id}`} label={tournament.name} className="text-[10px] font-black uppercase tracking-widest text-[#888888] hover:text-[#F0F0F0] mb-2" />
         <p className="font-display text-2xl font-bold uppercase leading-tight text-[#F0F0F0]">Configurações</p>
         <p className="text-xs text-[#888888] font-semibold mt-1">Horários e quadras — editáveis a qualquer momento, mesmo com o torneio em andamento</p>
       </div>

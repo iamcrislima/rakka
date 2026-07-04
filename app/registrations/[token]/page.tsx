@@ -1,7 +1,47 @@
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
+import { buildOpenGraph, buildTwitter } from '@/lib/seo'
 import type { Registration, Registrant } from '@/types'
 import JoinForm from './JoinForm'
+
+// ── Metadata ────────────────────────────────────────────────
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>
+}): Promise<Metadata> {
+  const { token } = await params
+  const supabase = await createClient()
+
+  const { data: reg } = await supabase
+    .from('registrations')
+    .select('id, name')
+    .eq('share_token', token)
+    .single()
+
+  if (!reg) return {}
+
+  const { data: catRow } = await supabase
+    .from('categories')
+    .select('tournaments(name)')
+    .eq('registration_id', reg.id)
+    .single()
+
+  const tRaw  = catRow?.tournaments
+  const tName = (Array.isArray(tRaw) ? tRaw[0] : tRaw)?.name as string | undefined
+
+  const title       = tName ?? reg.name
+  const description = `Inscreva-se no ${title}`
+
+  return {
+    title,
+    description,
+    openGraph: buildOpenGraph({ title, description }),
+    twitter:   buildTwitter({ title, description }),
+  }
+}
 
 interface CategoryContext {
   categoryName:    string

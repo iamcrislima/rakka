@@ -206,6 +206,86 @@ const STAGE_SHORT: Record<string, string> = {
   group_a: 'GA', group_b: 'GB', final: 'Final', consolation_final: '3º',
 }
 
+// ── Próximas chamadas — a quick-scan "what to call next, per court" tool ──
+// for the organizer walking between courts. Different job than Modo TV
+// (which is the public-facing screen): this is read-first, one row per
+// court, current match called out separately from the next one to summon.
+
+function NextCallsSection({ tournamentId, courts }: { tournamentId: string; courts: Court[] }) {
+  const supabase = createClient()
+  const [matches, setMatches] = useState<Match[]>([])
+  const [players, setPlayers] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      const [{ data: ms }, { data: ps }] = await Promise.all([
+        supabase.from('matches').select('*').eq('tournament_id', tournamentId).eq('status', 'pending'),
+        supabase.from('players').select('id, name').eq('tournament_id', tournamentId),
+      ])
+      if (cancelled) return
+      setMatches((ms ?? []) as Match[])
+      const nameMap: Record<string, string> = {}
+      for (const p of (ps ?? [])) nameMap[p.id] = (p.name as string).split(' ')[0] ?? p.name
+      setPlayers(nameMap)
+      setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [tournamentId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function n(id: string) { return players[id] ?? '?' }
+
+  if (loading || courts.length === 0) return null
+
+  const rows = courts.map(court => {
+    const queue = matches
+      .filter(m => m.court_id === court.id)
+      .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
+    return {
+      court,
+      current:    queue.find(m => m.started_at) ?? null,
+      nextToCall: queue.find(m => !m.started_at) ?? null,
+    }
+  })
+
+  if (rows.every(r => !r.current && !r.nextToCall)) return null
+
+  return (
+    <div className="bg-[#161616] rounded-2xl border-2 border-[#C8F135]/30 shadow-sm overflow-hidden">
+      <div className="px-5 py-3.5 bg-[#C8F135]/10 border-b border-[#242424] flex items-center gap-2">
+        <span className="text-sm">📢</span>
+        <p className="text-xs font-black text-[#C8F135] uppercase tracking-widest">Próximas chamadas</p>
+      </div>
+      <div className="divide-y divide-[#242424]">
+        {rows.map(({ court, current, nextToCall }) => (
+          <div key={court.id} className="px-5 py-4 flex items-center gap-4">
+            <div className="w-36 shrink-0">
+              <p className="text-xs font-black text-[#F0F0F0] truncate">🏟️ {court.name}</p>
+              {current && (
+                <span className="text-[9px] font-bold text-red-400 uppercase tracking-wide">🔴 Em andamento</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              {nextToCall ? (
+                <p className="text-sm font-bold text-[#F0F0F0] truncate">
+                  <span className="text-[#C8F135]">▶</span>{' '}
+                  {n(nextToCall.team1_p1)} · {n(nextToCall.team1_p2)}{' '}
+                  <span className="text-[#6B6B6B] font-normal">vs</span>{' '}
+                  {n(nextToCall.team2_p1)} · {n(nextToCall.team2_p2)}
+                </p>
+              ) : (
+                <p className="text-sm font-bold text-[#6B6B6B]">— nenhuma partida na fila —</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function CourtSchedulePanel({ tournamentId, courts }: { tournamentId: string; courts: Court[] }) {
   const supabase = createClient()
   const [matches,   setMatches]  = useState<Match[]>([])
@@ -535,7 +615,7 @@ function ContentForm({ tournamentId, onSave, onCancel, initial }: {
   }
 
   return (
-    <div className="bg-[#161616] rounded-2xl border border-[#242424] shadow-sm p-5 space-y-5 animate-fade-in">
+    <div className="bg-[#161616] rounded-2xl border border-[#242424] shadow-sm p-5 space-y-5 animate-fade-in max-w-2xl">
       <p className="font-black text-[#F0F0F0]">{initial ? 'Editar item' : 'Novo item'}</p>
 
       {/* Type */}
@@ -837,7 +917,7 @@ export default function TVAdminPanel({ tournamentId, items: initialItems, courts
   const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order)
 
   return (
-    <div className="space-y-5 animate-fade-in max-w-lg mx-auto lg:py-4">
+    <div className="space-y-5 animate-fade-in max-w-[1400px] mx-auto lg:py-4">
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -857,6 +937,12 @@ export default function TVAdminPanel({ tournamentId, items: initialItems, courts
 
       {/* Courts */}
       <CourtsSection tournamentId={tournamentId} courts={courts} />
+
+      {/* Próximas chamadas — organizer-facing "what to call next per court",
+          distinct from the TV mode's public-facing screens */}
+      {courts.length > 0 && (
+        <NextCallsSection tournamentId={tournamentId} courts={courts} />
+      )}
 
       {/* Court schedule (manual reassignment + reorder) */}
       {courts.length > 0 && (

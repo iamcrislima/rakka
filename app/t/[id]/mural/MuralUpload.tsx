@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { uploadMuralPhoto } from './actions'
 
 const MAX_SIZE = 5 * 1024 * 1024 // 5MB
 
@@ -28,28 +28,12 @@ export default function MuralUpload({ tournamentId, tournamentName }: { tourname
     setUploading(true)
     setError('')
 
-    const supabase = createClient()
-    const ext  = file.name.split('.').pop() || 'jpg'
-    const path = `${tournamentId}/${crypto.randomUUID()}.${ext}`
-
-    const { error: upErr } = await supabase.storage.from('mural-photos').upload(path, file, { contentType: file.type })
-    if (upErr) {
-      setError('Não foi possível enviar a foto. Tente novamente.')
-      setUploading(false)
-      return
-    }
-
-    const { error: dbErr } = await supabase
-      .from('mural_photos')
-      .insert({ tournament_id: tournamentId, storage_path: path, status: 'pending' })
-
-    if (dbErr) {
-      setError('Não foi possível enviar a foto. Tente novamente.')
-      setUploading(false)
-      return
-    }
+    const formData = new FormData()
+    formData.append('file', file)
+    const result = await uploadMuralPhoto(tournamentId, formData)
 
     setUploading(false)
+    if (!result.ok) { setError(result.error); return }
     setDone(true)
   }
 
@@ -105,6 +89,10 @@ export default function MuralUpload({ tournamentId, tournamentName }: { tourname
       )}
 
       {error && <p className="text-sm font-bold text-[#FF4444]">{error}</p>}
+
+      <p className="text-[11px] text-[#6B6B6B] max-w-xs">
+        Ao enviar, você autoriza a exibição desta foto no telão do evento e no site do torneio.
+      </p>
 
       <button
         onClick={handleUpload}

@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import BackLink from '@/app/components/BackLink'
 import type { Tournament, Category, Player, Match, MatchRules, PlayerStats, Court } from '@/types'
 import type { KnockoutSeed, MatchSeed } from '@/lib/match-generator'
 import { computeRanking } from '@/lib/ranking'
@@ -125,9 +126,7 @@ function DesktopBanner({ tournament, category, rules }: { tournament: Tournament
     }`}>
       <div className="absolute -right-8 -top-8 w-48 h-48 rounded-full pointer-events-none" style={{ background: done ? 'rgba(255,255,255,0.05)' : 'var(--bt-neon-dim)' }} />
       <div className="flex items-center gap-4">
-        <Link href={`/admin/tournaments/${tournament.id}`} className="text-white/50 hover:text-white/80 text-sm font-bold transition-colors shrink-0">
-          ← {tournament.name}
-        </Link>
+        <BackLink href={`/admin/tournaments/${tournament.id}`} label={tournament.name} className="text-white/50 hover:text-white/80 text-sm font-bold shrink-0" />
         <div className="w-px h-5 bg-white/20" />
         <h1 className="font-display text-2xl font-bold uppercase tracking-tight leading-tight">{category.name}</h1>
       </div>
@@ -157,9 +156,7 @@ function MobileBanner({ tournament, category }: { tournament: Tournament; catego
     }`}>
       <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-white/5" />
       <div className="relative">
-        <Link href={`/admin/tournaments/${tournament.id}`} className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white/60 transition-colors block mb-1">
-          ← {tournament.name}
-        </Link>
+        <BackLink href={`/admin/tournaments/${tournament.id}`} label={tournament.name} className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white/60 mb-1" />
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
           <span className="text-[10px] font-black uppercase tracking-widest text-white/50">{cfg.shape} {cfg.label}</span>
@@ -386,7 +383,7 @@ function MatchesTab({ tournament, category, players, matches, rules, finalsSeeds
       {sortedFinals.length > 0 && (
         <section className="space-y-2.5">
           <SectionLabel icon="⚡" label="Finais" color="text-amber-400" />
-          <div className="stagger space-y-2.5">
+          <div className="stagger grid grid-cols-1 2xl:grid-cols-2 gap-2.5">
             {sortedFinals.map(m => (
               <MatchCard key={m.id} m={m} name={name} tournamentId={tournament.id} categoryId={category.id} rules={rules} courts={courts} scheduledAt={category.scheduled_at} />
             ))}
@@ -404,7 +401,7 @@ function MatchesTab({ tournament, category, players, matches, rules, finalsSeeds
         return (
           <section key={stage} className="space-y-2.5">
             <SectionLabel icon={cfg.icon} label={cfg.label} color={cfg.color} />
-            <div className="stagger space-y-2.5">
+            <div className="stagger grid grid-cols-1 2xl:grid-cols-2 gap-2.5">
               {ms.map(m => (
                 <MatchCard key={m.id} m={m} name={name} tournamentId={tournament.id} categoryId={category.id} rules={rules} courts={courts} scheduledAt={category.scheduled_at} />
               ))}

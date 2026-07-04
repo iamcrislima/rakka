@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { MuralPhoto } from '@/types'
+import BackLink from '@/app/components/BackLink'
 
 interface PhotoWithUrl extends MuralPhoto { url: string }
 
@@ -36,9 +36,7 @@ export default function MuralModeration({ tournamentId, tournamentName, photos: 
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in lg:py-4">
 
       <div>
-        <Link href={`/admin/tournaments/${tournamentId}`} className="text-xs font-bold text-[#C8F135]">
-          ← {tournamentName}
-        </Link>
+        <BackLink href={`/admin/tournaments/${tournamentId}`} label={tournamentName} className="text-xs font-bold text-[#C8F135]" />
         <h1 className="font-display text-2xl font-bold uppercase text-[#F0F0F0] mt-1">Moderação do Mural</h1>
         <p className="text-sm text-[#888888] mt-1">Só fotos aprovadas aqui entram na rotação do Modo TV.</p>
       </div>

@@ -14,6 +14,7 @@ import GenerateFinalsButton from './GenerateFinalsButton'
 import ShuffleGroupsButton from './ShuffleGroupsButton'
 import StartGroupStageButton from './StartGroupStageButton'
 import { useTopbar } from '@/app/components/TopbarContext'
+import BackLink from '@/app/components/BackLink'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -207,10 +208,7 @@ function ControlPanelHeader({
         {/* Top row */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <Link href="/admin" className="text-xs font-bold transition-colors shrink-0 hidden lg:block"
-                  style={{ color: 'var(--bt-muted)' }}>
-              ← Torneios
-            </Link>
+            <BackLink href="/admin" label="Torneios" className="text-xs font-bold shrink-0 hidden lg:flex text-[color:var(--bt-muted)]" />
             <div className="hidden lg:block w-px h-4" style={{ background: 'var(--bt-border)' }} />
             <div className="min-w-0">
               <p className="text-[10px] font-black uppercase tracking-widest mb-0.5"

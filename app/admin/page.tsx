@@ -33,7 +33,7 @@ export default async function HomePage() {
   const rest   = tournaments.filter(t => t.status !== 'group_stage' && t.status !== 'finals')
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-2xl mx-auto lg:py-4">
+    <div className="space-y-6 animate-fade-in max-w-[1400px] mx-auto lg:py-4">
 
       {/* Hero */}
       <div className="relative rounded-2xl p-5 overflow-hidden border" style={{ background: 'var(--bt-card)', borderColor: 'var(--bt-border)' }}>
@@ -60,7 +60,7 @@ export default async function HomePage() {
           <p className="text-[11px] font-black uppercase tracking-widest px-0.5" style={{ color: 'var(--bt-muted)' }}>
             Em jogo agora
           </p>
-          <div className="stagger space-y-2">
+          <div className="stagger grid grid-cols-1 lg:grid-cols-2 gap-2">
             {active.map(t => (
               <TournamentCard key={t.id} t={t} highlight />
             ))}
@@ -76,7 +76,7 @@ export default async function HomePage() {
               Outros torneios
             </p>
           )}
-          <div className="stagger space-y-2">
+          <div className="stagger grid grid-cols-1 lg:grid-cols-2 gap-2">
             {rest.map(t => (
               <TournamentCard key={t.id} t={t} />
             ))}

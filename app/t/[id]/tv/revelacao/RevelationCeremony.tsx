@@ -16,6 +16,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import QRCode from 'qrcode'
 import type { PlayerStats } from '@/types'
 
 export interface CeremonyStats {
@@ -26,14 +27,13 @@ export interface CeremonyStats {
 }
 
 interface Props {
+  tournamentId:   string
   tournamentName: string
   categoryName:   string
   kingRanking:    PlayerStats[]
   queenRanking:   PlayerStats[]
   stats:          CeremonyStats
 }
-
-const SUSPENSE_COUNTDOWN_SECONDS = 3
 
 const TOTAL_STEPS = 5 // 0 = suspense intro, 1-4 = reveal steps
 
@@ -54,7 +54,7 @@ function podiumPositions(revealStep: number): number[] {
   return [1, 2, 3]
 }
 
-export default function RevelationCeremony({ tournamentName, categoryName, kingRanking, queenRanking, stats }: Props) {
+export default function RevelationCeremony({ tournamentId, tournamentName, categoryName, kingRanking, queenRanking, stats }: Props) {
   const [step, setStep] = useState(0)
   const isSuspense = step === 0
   const isFinal     = step === TOTAL_STEPS - 1
@@ -72,21 +72,6 @@ export default function RevelationCeremony({ tournamentName, categoryName, kingR
     return () => window.removeEventListener('keydown', onKey)
   }, [next, prev])
 
-  // Suspense screen auto-advances after a short countdown — manual
-  // click/keyboard still works at any point and short-circuits it.
-  const [suspenseCountdown, setSuspenseCountdown] = useState(SUSPENSE_COUNTDOWN_SECONDS)
-  useEffect(() => {
-    if (step !== 0) return
-    setSuspenseCountdown(SUSPENSE_COUNTDOWN_SECONDS)
-    const id = setInterval(() => {
-      setSuspenseCountdown(c => {
-        if (c <= 1) { clearInterval(id); next(); return 0 }
-        return c - 1
-      })
-    }, 1000)
-    return () => clearInterval(id)
-  }, [step, next])
-
   const [mounted, setMounted] = useState(false)
   useEffect(() => { if (isFinal) setMounted(true) }, [isFinal])
 
@@ -95,8 +80,17 @@ export default function RevelationCeremony({ tournamentName, categoryName, kingR
       onClick={next}
       className="fixed inset-0 z-[100] flex flex-col overflow-hidden cursor-pointer select-none bg-[#0A0A0A] text-[#F0F0F0] px-4 sm:px-10 py-4 sm:py-6"
     >
+      {/* Fixed Rakka logo — same position on every step (including suspense),
+          since this is exactly the moment people photograph the screen. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/rakka-logo-full.svg"
+        alt="Rakka"
+        className="absolute top-4 sm:top-6 left-4 sm:left-8 h-6 sm:h-8 w-auto z-20 opacity-90"
+      />
+
       {isSuspense ? (
-        <SuspenseScreen tournamentName={tournamentName} categoryName={categoryName} stats={stats} countdown={suspenseCountdown} />
+        <SuspenseScreen tournamentName={tournamentName} categoryName={categoryName} stats={stats} />
       ) : (
         <>
           {/* Header */}
@@ -115,6 +109,9 @@ export default function RevelationCeremony({ tournamentName, categoryName, kingR
           </div>
         </>
       )}
+
+      {/* Share banner — final step only, discreet lower-third */}
+      {isFinal && <ShareBanner tournamentId={tournamentId} />}
 
       {/* Discreet step indicator — organizer-facing only */}
       <div className="absolute bottom-3 right-4 flex items-center gap-1.5 opacity-40">
@@ -146,8 +143,8 @@ function formatTotalDuration(totalSecs: number): string {
   return `${mins}min`
 }
 
-function SuspenseScreen({ tournamentName, categoryName, stats, countdown }: {
-  tournamentName: string; categoryName: string; stats: CeremonyStats; countdown: number
+function SuspenseScreen({ tournamentName, categoryName, stats }: {
+  tournamentName: string; categoryName: string; stats: CeremonyStats
 }) {
   const statItems: { value: string; label: string; badge?: string }[] = [
     { value: String(stats.matchesPlayed), label: 'Partidas disputadas' },
@@ -192,14 +189,15 @@ function SuspenseScreen({ tournamentName, categoryName, stats, countdown }: {
         ))}
       </div>
 
-      {/* Bottom — reveal cue + auto-advance countdown */}
+      {/* Bottom — reveal cue, manual advance only (no timer — the organizer
+          controls pacing on the mic, not a clock). */}
       <div className="animate-fade-up flex flex-col items-center gap-2" style={{ animationDelay: '500ms' }}>
         <span className="text-2xl sm:text-3xl opacity-30">🏆</span>
         <p className="text-xs sm:text-sm font-bold uppercase tracking-[0.3em] text-[#888888]">
           Fique agora com o ranking da categoria {categoryName}
         </p>
-        <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-[#C8F135]/80 tabular-nums">
-          Revelando em {countdown}…
+        <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-[#C8F135]/80 animate-pulse">
+          Toque ou pressione espaço para revelar
         </p>
       </div>
 
@@ -296,23 +294,24 @@ function PodiumRow({ pos, stats, accent, showConfetti }: {
   if (isChamp) {
     return (
       <div
-        className="relative flex items-center gap-2 sm:gap-4 rounded-2xl px-3 sm:px-6 py-3 sm:py-5 overflow-hidden animate-champion-pop"
+        className="relative flex items-center gap-3 sm:gap-6 rounded-2xl px-4 sm:px-9 py-4 sm:py-8 overflow-hidden animate-champion-celebrate"
         style={{
-          background: `radial-gradient(circle at 15% 30%, ${accent}2A, transparent 70%), ${accent}14`,
-          border:     `2px solid ${accent}`,
-          boxShadow:  `0 0 20px ${accent}33`,
-        }}
+          background: `radial-gradient(circle at 15% 30%, ${accent}3A, transparent 70%), ${accent}1C`,
+          border:     `3px solid ${accent}`,
+          ['--glow-a' as string]: `${accent}33`,
+          ['--glow-b' as string]: `${accent}88`,
+        } as React.CSSProperties}
       >
         {showConfetti && <RowConfetti accent={accent} />}
-        <span className="relative z-10 text-2xl sm:text-4xl leading-none shrink-0">🏆</span>
+        <span className="relative z-10 text-4xl sm:text-6xl leading-none shrink-0">🏆</span>
         <div className="relative z-10 flex-1 min-w-0">
           <p
-            className="font-display font-bold truncate text-left leading-tight"
-            style={{ fontSize: 'clamp(1.2rem,2.6vw,2rem)', color: '#F0F0F0' }}
+            className="font-display font-black uppercase truncate text-left leading-tight"
+            style={{ fontSize: 'clamp(1.8rem,4vw,3.2rem)', color: '#F0F0F0' }}
           >
             {stats.player.name}
           </p>
-          <p className="text-[10px] sm:text-xs font-bold text-left tabular-nums" style={{ color: accent }}>
+          <p className="text-xs sm:text-sm font-bold text-left tabular-nums" style={{ color: accent }}>
             {stats.wins}V · {stats.losses}D · <DiffText value={stats.gameDiff} />
           </p>
         </div>
@@ -353,7 +352,7 @@ function PodiumRow({ pos, stats, accent, showConfetti }: {
 
 function RowConfetti({ accent }: { accent: string }) {
   const colors = [accent, '#FFFFFF', KING_ACCENT]
-  const pieces = Array.from({ length: 16 }, (_, i) => ({
+  const pieces = Array.from({ length: 28 }, (_, i) => ({
     left:     Math.random() * 100,
     delay:    Math.random() * 1.6,
     duration: 1.6 + Math.random() * 1.4,
@@ -374,6 +373,41 @@ function RowConfetti({ accent }: { accent: string }) {
           }}
         />
       ))}
+    </div>
+  )
+}
+
+// ── Share banner — final step only, links to the Stories-format share ──
+// screen via QR code. Stops click-propagation so tapping the banner never
+// gets swallowed by the ceremony's "click anywhere to advance" handler.
+
+function ShareBanner({ tournamentId }: { tournamentId: string }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const link = `${window.location.origin}/t/${tournamentId}/compartilhar`
+    QRCode.toDataURL(link, { width: 120, margin: 1, color: { dark: '#0A0A0A', light: '#FFFFFF' } })
+      .then(d => { if (!cancelled) setDataUrl(d) })
+      .catch(() => { if (!cancelled) setDataUrl(null) })
+    return () => { cancelled = true }
+  }, [tournamentId])
+
+  return (
+    <div
+      onClick={e => e.stopPropagation()}
+      className="absolute left-1/2 -translate-x-1/2 bottom-10 sm:bottom-12 z-20 flex items-center gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl animate-fade-in"
+      style={{ background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.1)', backdropFilter: 'blur(6px)' }}
+    >
+      {dataUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={dataUrl} alt="QR code" width={56} height={56} className="rounded-lg bg-white p-1 shrink-0" />
+      ) : (
+        <div className="w-14 h-14 rounded-lg bg-white/10 animate-pulse shrink-0" />
+      )}
+      <p className="text-[11px] sm:text-xs font-bold uppercase tracking-wide text-white/70 max-w-[10rem] leading-snug">
+        Compartilhe o resultado com seus amigos
+      </p>
     </div>
   )
 }

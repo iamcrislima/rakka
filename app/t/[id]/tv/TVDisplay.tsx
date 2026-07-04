@@ -169,6 +169,45 @@ function Clock() {
   return <span className="tabular-nums">{time}</span>
 }
 
+// ── Fullscreen toggle — most organizers don't know F11, so an explicit ──
+// button here matters more than the browser shortcut. ───────────────────
+
+function FullscreenButton() {
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  function toggle() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {})
+    }
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+      className="text-white/20 hover:text-white/60 transition-colors"
+    >
+      {isFullscreen ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 3v4a1 1 0 0 1-1 1H4M15 3v4a1 1 0 0 0 1 1h4M9 21v-4a1 1 0 0 0-1-1H4M15 21v-4a1 1 0 0 1 1-1h4" />
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 3H4v4M16 3h4v4M8 21H4v-4M16 21h4v-4" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 // ── TeamBlock (legacy hero) ───────────────────────────────────
 
 function TeamBlock({ p1, p2, isWinner, align }: {
@@ -436,15 +475,83 @@ function SubPanelRotator({ panels }: { panels: SubPanel[] }) {
 // ── Jogos — every court visible at once (grid); paginates only when
 // there are too many courts to stay legible on one screen ───────────
 
-function CourtGridMatchRow({ m, name, emphasized, large }: {
-  m: Match; name: (id: string) => string; emphasized?: boolean; large?: boolean
+// Card density scales with how many quadra cards are on screen AT ONCE
+// (the current page's court count) — never a hardcoded "4 courts" case.
+// More courts sharing the row → smaller type/padding → last resort drops
+// the "depois, nesta quadra" slots so the grid can never need a scrollbar.
+type CardTier = 'solo' | 'duo' | 'compact' | 'dense'
+
+function courtCardTier(n: number): CardTier {
+  if (n <= 1) return 'solo'
+  if (n === 2) return 'duo'
+  if (n <= 4) return 'compact'
+  return 'dense'
+}
+
+interface CardScale {
+  padding:      string
+  gridGap:      string
+  gap:          string
+  sectionPad:   string
+  rowGap:       string
+  courtIcon:    string
+  courtName:    string
+  badge:        string
+  startedLabel: string
+  sectionLabel: string
+  freeLabel:    string
+  /** How many "depois, nesta quadra" rows to show — 0 hides the section entirely. */
+  queueSlots:   0 | 1 | 2
+  nameEmph:     string
+  nameBase:     string
+  scoreEmph:    string
+  scoreBase:    string
+  vsEmph:       string
+  vsBase:       string
+  queueText:    string
+  queueVs:      string
+}
+
+const CARD_SCALE: Record<CardTier, CardScale> = {
+  solo: {
+    padding: 'p-8', gridGap: 'gap-4', gap: 'gap-4', sectionPad: 'pt-3', rowGap: 'space-y-2',
+    courtIcon: 'text-3xl', courtName: 'text-3xl', badge: 'text-xs', startedLabel: 'text-sm',
+    sectionLabel: 'text-xs', freeLabel: 'text-sm', queueSlots: 2,
+    nameEmph: 'text-2xl', nameBase: 'text-xl', scoreEmph: 'text-4xl', scoreBase: 'text-2xl',
+    vsEmph: 'text-3xl', vsBase: 'text-xl', queueText: 'text-sm', queueVs: 'text-xs',
+  },
+  duo: {
+    padding: 'p-7', gridGap: 'gap-4', gap: 'gap-3.5', sectionPad: 'pt-3', rowGap: 'space-y-1.5',
+    courtIcon: 'text-2xl', courtName: 'text-2xl', badge: 'text-[10px]', startedLabel: 'text-xs',
+    sectionLabel: 'text-[10px]', freeLabel: 'text-xs', queueSlots: 2,
+    nameEmph: 'text-xl', nameBase: 'text-lg', scoreEmph: 'text-3xl', scoreBase: 'text-xl',
+    vsEmph: 'text-2xl', vsBase: 'text-lg', queueText: 'text-xs', queueVs: 'text-[10px]',
+  },
+  compact: {
+    padding: 'p-4', gridGap: 'gap-3', gap: 'gap-2', sectionPad: 'pt-2', rowGap: 'space-y-1',
+    courtIcon: 'text-lg', courtName: 'text-lg', badge: 'text-[9px]', startedLabel: 'text-[10px]',
+    sectionLabel: 'text-[9px]', freeLabel: 'text-[10px]', queueSlots: 1,
+    nameEmph: 'text-base', nameBase: 'text-sm', scoreEmph: 'text-xl', scoreBase: 'text-base',
+    vsEmph: 'text-base', vsBase: 'text-xs', queueText: 'text-[11px]', queueVs: 'text-[9px]',
+  },
+  dense: {
+    padding: 'p-3', gridGap: 'gap-2', gap: 'gap-1.5', sectionPad: 'pt-1.5', rowGap: 'space-y-0.5',
+    courtIcon: 'text-base', courtName: 'text-sm', badge: 'text-[8px]', startedLabel: 'text-[9px]',
+    sectionLabel: 'text-[8px]', freeLabel: 'text-[9px]', queueSlots: 0,
+    nameEmph: 'text-sm', nameBase: 'text-xs', scoreEmph: 'text-lg', scoreBase: 'text-sm',
+    vsEmph: 'text-sm', vsBase: 'text-[10px]', queueText: 'text-[10px]', queueVs: 'text-[8px]',
+  },
+}
+
+function CourtGridMatchRow({ m, name, emphasized, scale }: {
+  m: Match; name: (id: string) => string; emphasized?: boolean; scale: CardScale
 }) {
   const isDone = m.status === 'done'
   const t1Wins = isDone && (m.score1 ?? 0) > (m.score2 ?? 0)
   const t2Wins = isDone && (m.score2 ?? 0) > (m.score1 ?? 0)
-  const nameSize  = large ? (emphasized ? 'text-xl' : 'text-lg') : (emphasized ? 'text-base' : 'text-sm')
-  const scoreSize = large ? (emphasized ? 'text-3xl' : 'text-xl') : (emphasized ? 'text-xl' : 'text-base')
-  const vsSize    = large ? (emphasized ? 'text-2xl' : 'text-lg') : (emphasized ? 'text-base' : 'text-xs')
+  const nameSize  = emphasized ? scale.nameEmph  : scale.nameBase
+  const scoreSize = emphasized ? scale.scoreEmph : scale.scoreBase
+  const vsSize    = emphasized ? scale.vsEmph    : scale.vsBase
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1 min-w-0">
@@ -471,89 +578,96 @@ function CourtGridMatchRow({ m, name, emphasized, large }: {
 /** A "Depois, nesta quadra" slot — always rendered, even when there's no
  *  match queued that deep yet, so every card in a row reserves the exact
  *  same height (side-by-side cards can't be different sizes). */
-function QueueSlotRow({ m, name, large }: { m: Match | null; name: (id: string) => string; large?: boolean }) {
+function QueueSlotRow({ m, name, scale }: { m: Match | null; name: (id: string) => string; scale: CardScale }) {
   if (!m) {
-    return <div className={`font-bold text-white/10 ${large ? 'text-sm' : 'text-xs'}`}>—</div>
+    return <div className={`font-bold text-white/10 ${scale.queueText}`}>—</div>
   }
   return (
     <div className="flex items-center gap-2">
-      <span className={`flex-1 min-w-0 truncate font-bold text-white/45 ${large ? 'text-sm' : 'text-xs'}`}>
+      <span className={`flex-1 min-w-0 truncate font-bold text-white/45 ${scale.queueText}`}>
         {name(m.team1_p1)} · {name(m.team1_p2)}
       </span>
-      <span className={`shrink-0 font-black text-white/15 ${large ? 'text-xs' : 'text-[10px]'}`}>vs</span>
-      <span className={`flex-1 min-w-0 truncate text-right font-bold text-white/45 ${large ? 'text-sm' : 'text-xs'}`}>
+      <span className={`shrink-0 font-black text-white/15 ${scale.queueVs}`}>vs</span>
+      <span className={`flex-1 min-w-0 truncate text-right font-bold text-white/45 ${scale.queueText}`}>
         {name(m.team2_p1)} · {name(m.team2_p2)}
       </span>
     </div>
   )
 }
 
-/** Every court card follows the exact same 4-slot structure — em andamento,
- *  próxima, e 2 no "depois" — with placeholders for whatever's missing.
+/** Every court card follows the exact same slot structure — em andamento,
+ *  próxima, e até 2 no "depois" — with placeholders for whatever's missing.
  *  Cards sit side-by-side in a row, so they can never be different sizes
  *  depending on how deep that specific court's backlog happens to be.
  *  `current` is guaranteed non-null here — courts with no current match are
- *  filtered out of courtSchedules entirely before this ever renders. */
-function CourtGridCard({ schedule, name, categoryMap, large }: {
-  schedule: CourtSchedule; name: (id: string) => string; categoryMap: Record<string, CategoryInfo>; large?: boolean
+ *  filtered out of courtSchedules entirely before this ever renders.
+ *  `tier` (derived from how many cards share the current page) controls
+ *  both type scale and how much "depois" backlog gets shown — never a
+ *  hardcoded court count. */
+function CourtGridCard({ schedule, name, categoryMap, tier }: {
+  schedule: CourtSchedule; name: (id: string) => string; categoryMap: Record<string, CategoryInfo>; tier: CardTier
 }) {
   const { court, current, next, queue } = schedule
   const infoFor = (m: Match | null) => m?.category_id ? (categoryMap[m.category_id] ?? null) : null
   const curInfo  = infoFor(current)
+  const scale    = CARD_SCALE[tier]
 
   return (
-    <div className={`rounded-2xl border border-white/8 bg-white/[0.03] flex flex-col gap-4 min-w-0 ${large ? 'p-7' : 'p-5'}`}>
+    <div className={`rounded-2xl border border-white/8 bg-white/[0.03] flex flex-col min-w-0 ${scale.padding} ${scale.gap}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`${large ? 'text-2xl' : 'text-lg'} shrink-0`}>🏟️</span>
-          <p className={`${large ? 'text-2xl' : 'text-lg'} font-black text-white truncate`}>{court.name}</p>
+          <span className={`${scale.courtIcon} shrink-0`}>🏟️</span>
+          <p className={`${scale.courtName} font-black text-white truncate`}>{court.name}</p>
           {curInfo && (
-            <span className="text-[9px] font-bold text-white/30 bg-white/6 px-2 py-0.5 rounded-full shrink-0 truncate max-w-[100px]">
+            <span className={`${scale.badge} font-bold text-white/30 bg-white/6 px-2 py-0.5 rounded-full shrink-0 truncate max-w-[100px]`}>
               {curInfo.name}
             </span>
           )}
         </div>
         {current ? (
-          <span className={`flex items-center gap-1.5 font-black uppercase tracking-widest text-red-400 shrink-0 ${large ? 'text-xs' : 'text-[10px]'}`}>
+          <span className={`flex items-center gap-1.5 font-black uppercase tracking-widest text-red-400 shrink-0 ${scale.badge}`}>
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" /> Ao vivo
           </span>
         ) : (
-          <span className={`font-black uppercase tracking-widest text-white/20 shrink-0 ${large ? 'text-xs' : 'text-[10px]'}`}>Livre</span>
+          <span className={`font-black uppercase tracking-widest text-white/20 shrink-0 ${scale.badge}`}>Livre</span>
         )}
       </div>
 
       {current ? (
-        <div className="space-y-2">
+        <div className={scale.rowGap}>
           {/* Always reserve this line's height — whether or not the match
               has a recorded start time — so cards never differ in height
               depending on which matches happened to have their timer started. */}
-          <p className={`font-bold text-white/30 uppercase tracking-wide ${large ? 'text-xs' : 'text-[10px]'}`}>
+          <p className={`font-bold text-white/30 uppercase tracking-wide ${scale.startedLabel}`}>
             {current.started_at
               ? `Início ${new Date(current.started_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
               : '—'}
           </p>
-          <CourtGridMatchRow m={current} name={name} emphasized large={large} />
+          <CourtGridMatchRow m={current} name={name} emphasized scale={scale} />
         </div>
       ) : (
-        <p className={`text-white/15 font-bold uppercase tracking-widest py-2 ${large ? 'text-sm' : 'text-xs'}`}>Sem partida em andamento</p>
+        <p className={`text-white/15 font-bold uppercase tracking-widest py-2 ${scale.freeLabel}`}>Sem partida em andamento</p>
       )}
 
-      <div className="pt-3 border-t border-white/6 space-y-1.5">
-        <p className={`font-black uppercase tracking-widest text-white/25 ${large ? 'text-[10px]' : 'text-[9px]'}`}>Próxima</p>
+      <div className={`${scale.sectionPad} border-t border-white/6 ${scale.rowGap}`}>
+        <p className={`font-black uppercase tracking-widest text-white/25 ${scale.sectionLabel}`}>Próxima</p>
         {next ? (
-          <CourtGridMatchRow m={next} name={name} large={large} />
+          <CourtGridMatchRow m={next} name={name} scale={scale} />
         ) : (
-          <p className={`font-bold text-white/10 ${large ? 'text-sm' : 'text-xs'}`}>—</p>
+          <p className={`font-bold text-white/10 ${scale.nameBase}`}>—</p>
         )}
       </div>
 
-      <div className="pt-3 border-t border-white/6 space-y-1.5">
-        <p className={`font-black uppercase tracking-widest text-white/20 ${large ? 'text-[10px]' : 'text-[9px]'}`}>Depois, nesta quadra</p>
-        <div className="space-y-1">
-          <QueueSlotRow m={queue[0] ?? null} name={name} large={large} />
-          <QueueSlotRow m={queue[1] ?? null} name={name} large={large} />
+      {scale.queueSlots > 0 && (
+        <div className={`${scale.sectionPad} border-t border-white/6 ${scale.rowGap}`}>
+          <p className={`font-black uppercase tracking-widest text-white/20 ${scale.sectionLabel}`}>Depois, nesta quadra</p>
+          <div className={scale.rowGap}>
+            {Array.from({ length: scale.queueSlots }).map((_, i) => (
+              <QueueSlotRow key={i} m={queue[i] ?? null} name={name} scale={scale} />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -568,8 +682,8 @@ function jogosGridColsClass(n: number): string {
   return 'grid-cols-2 lg:grid-cols-4'
 }
 
-function JogosGrid({ schedules, name, categoryMap, large }: {
-  schedules: CourtSchedule[]; name: (id: string) => string; categoryMap: Record<string, CategoryInfo>; large?: boolean
+function JogosGrid({ schedules, name, categoryMap }: {
+  schedules: CourtSchedule[]; name: (id: string) => string; categoryMap: Record<string, CategoryInfo>
 }) {
   const pages = useMemo(() => {
     if (schedules.length <= JOGOS_PAGE_SIZE) return [schedules]
@@ -595,9 +709,14 @@ function JogosGrid({ schedules, name, categoryMap, large }: {
 
   const safeIdx = Math.min(pageIdx, pages.length - 1)
   const page    = pages[safeIdx] ?? []
+  // Tier is derived from how many cards are actually sharing THIS page —
+  // the real signal for how cramped the grid is, independent of category
+  // count or any hardcoded court-count case.
+  const tier = courtCardTier(page.length)
+  const scale = CARD_SCALE[tier]
 
   return (
-    <div className="flex flex-col gap-4 h-full">
+    <div className="flex flex-col gap-4 h-full min-h-0">
       {pages.length > 1 && (
         <div className="flex items-center gap-2 shrink-0">
           {pages.map((_, i) => (
@@ -618,11 +737,11 @@ function JogosGrid({ schedules, name, categoryMap, large }: {
         </div>
       )}
       <div
-        className={`grid gap-4 ${jogosGridColsClass(page.length)}`}
-        style={{ opacity: visible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}
+        className={`flex-1 min-h-0 grid ${scale.gridGap} ${jogosGridColsClass(page.length)}`}
+        style={{ opacity: visible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease`, alignContent: 'center' }}
       >
         {page.map(s => (
-          <CourtGridCard key={s.court.id} schedule={s} name={name} categoryMap={categoryMap} large={large} />
+          <CourtGridCard key={s.court.id} schedule={s} name={name} categoryMap={categoryMap} tier={tier} />
         ))}
       </div>
     </div>
@@ -650,9 +769,9 @@ function CategoryJogosSection({ block, name, single }: {
         </span>
       </div>
 
-      <div className="shrink-0 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {block.liveCourts.length > 0 ? (
-          <JogosGrid schedules={block.liveCourts} name={name} categoryMap={{}} large={single} />
+          <JogosGrid schedules={block.liveCourts} name={name} categoryMap={{}} />
         ) : (
           <p className="text-white/15 font-bold text-sm uppercase tracking-widest py-4">Nenhum jogo em andamento nesta categoria</p>
         )}
@@ -1133,14 +1252,81 @@ function MuralCollageScreen({ photos, tournamentId }: { photos: MuralPhoto[]; to
   )
 }
 
+// ── Check-in — pre-event welcome screen. Exclusive (replaces the normal
+// Jogos/Painel/Mural rotation entirely) while the tournament hasn't
+// started yet — there's no live match to show anyway at that point, and
+// starting the tournament is itself the organizer's "proceed even with
+// pending check-ins" call, so status alone gates it (see TVDisplay root). ─
+
+export interface CategoryCheckInStatus {
+  categoryId:   string
+  categoryName: string
+  checkedIn:    number
+  total:        number
+}
+
+function CheckInQR({ tournamentId }: { tournamentId: string }) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const link = `${window.location.origin}/t/${tournamentId}/checkin`
+    QRCode.toDataURL(link, { width: 320, margin: 1, color: { dark: '#0A0A0A', light: '#FFFFFF' } })
+      .then(d => { if (!cancelled) setDataUrl(d) })
+      .catch(() => { if (!cancelled) setDataUrl(null) })
+    return () => { cancelled = true }
+  }, [tournamentId])
+
+  if (!dataUrl) return <div className="w-[280px] h-[280px] rounded-3xl bg-white/10 animate-pulse shrink-0" />
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={dataUrl} alt="QR code de check-in" width={280} height={280} className="rounded-3xl bg-white p-4 shrink-0" />
+  )
+}
+
+function CheckInWelcomeScreen({ tournament, checkInStatus }: {
+  tournament: Tournament; checkInStatus: CategoryCheckInStatus[]
+}) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-8 px-10 py-8 overflow-hidden text-center">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/rakka-logo-full.svg" alt="Rakka" className="h-10 w-auto shrink-0" />
+
+      <div className="space-y-2 shrink-0">
+        <p className="font-display font-bold uppercase leading-tight text-white" style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }}>
+          Bem-vindo ao {tournament.name}.
+        </p>
+        <p className="text-lg font-semibold text-white/50">Confirme sua chegada abaixo.</p>
+      </div>
+
+      <CheckInQR tournamentId={tournament.id} />
+
+      {checkInStatus.length > 0 && (
+        <div className="w-full max-w-4xl grid grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+          {checkInStatus.map(c => (
+            <div key={c.categoryId} className="rounded-2xl border border-white/8 bg-white/[0.03] px-5 py-4 space-y-1.5">
+              <p className="text-sm font-black text-white truncate">{c.categoryName}</p>
+              <p className="font-display text-2xl font-bold tabular-nums" style={{ color: '#C8F135' }}>
+                {c.checkedIn}/{c.total}
+              </p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/30">fizeram check-in</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Screen rotation — tab bar ─────────────────────────────────
 
-type ScreenId = 'jogos' | 'painel' | 'mural'
+type ScreenId = 'checkin' | 'jogos' | 'painel' | 'mural'
 
 const SCREEN_LABEL: Record<ScreenId, string> = {
-  jogos:  'Jogos',
-  painel: 'Painel Geral',
-  mural:  'Mural',
+  checkin: 'Check-in',
+  jogos:   'Jogos',
+  painel:  'Painel Geral',
+  mural:   'Mural',
 }
 
 const SCREEN_ROTATE_MS = 14000
@@ -1220,13 +1406,35 @@ export default function TVDisplay({
   // is showing — important once more than one category is broadcasting.
   const categoryNamesJoined = rankingPanels.map(p => p.categoryName).filter(Boolean).join(' · ')
 
+  // ── Check-in status — every category (not just broadcast ones), since
+  // this only matters pre-event when nothing is "broadcasting" yet anyway.
+  const checkInStatus: CategoryCheckInStatus[] = useMemo(
+    () => (categories ?? []).map(c => {
+      const catPlayers = players.filter(p => p.category_id === c.id)
+      return {
+        categoryId:   c.id,
+        categoryName: c.name,
+        checkedIn:    catPlayers.filter(p => p.checked_in).length,
+        total:        catPlayers.length,
+      }
+    }),
+    [players, categories],
+  )
+
   // ── Screen rotation — 'jogos' is the existing courts/ranking view
   // (renamed), 'painel' consolidates progress/agenda/destaque/hype into
   // one screen with fixed regions + an internal ticker. 'mural' is always
   // in the rotation — even with zero approved photos it still shows an
   // inviting empty state + the QR code, since that's exactly when you most
   // want to advertise it.
-  const screens: ScreenId[] = ['jogos', 'painel', 'mural']
+  //
+  // 'checkin' takes over EXCLUSIVELY while the tournament hasn't started
+  // (status === 'draft') — there's nothing live to show yet regardless,
+  // and starting the tournament is itself the organizer's call to proceed
+  // even with check-ins still pending, so status alone is the gate.
+  const screens: ScreenId[] = tournament.status === 'draft'
+    ? ['checkin']
+    : ['jogos', 'painel', 'mural']
 
   const [screenIdx, setScreenIdx] = useState(0)
   const [screenVisible, setScreenVisible] = useState(true)
@@ -1266,6 +1474,11 @@ export default function TVDisplay({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'courts', filter: `tournament_id=eq.${tournament.id}` },
+        refresh,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'players', filter: `tournament_id=eq.${tournament.id}` },
         refresh,
       )
       .subscribe()
@@ -1317,6 +1530,7 @@ export default function TVDisplay({
             <span className="text-xs font-bold tabular-nums">{countdown}s</span>
           </div>
           <p className="text-2xl font-black tabular-nums text-white/60"><Clock /></p>
+          <FullscreenButton />
           <a href={`/t/${tournament.id}`}
              className="text-xs font-bold text-white/20 hover:text-white/60 transition-colors uppercase tracking-widest">
             ✕ Sair
@@ -1336,6 +1550,9 @@ export default function TVDisplay({
         className="flex-1 flex flex-col overflow-hidden"
         style={{ opacity: screenVisible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}
       >
+      {activeScreen === 'checkin' && (
+        <CheckInWelcomeScreen tournament={tournament} checkInStatus={checkInStatus} />
+      )}
       {activeScreen === 'painel' && (
         <PainelGeralScreen
           progressData={progressData}
@@ -1354,8 +1571,10 @@ export default function TVDisplay({
         subPanels.length === 0 ? 'grid-cols-1' : 'grid-cols-[1fr_380px] xl:grid-cols-[1fr_440px]'
       }`}>
 
-        {/* ── LEFT ── */}
-        <div className="flex flex-col px-8 py-7 overflow-y-auto border-r border-white/5">
+        {/* ── LEFT — overflow-hidden (never -auto): the ranking panel on the ──
+            right already guarantees no scroll via flex-1/min-h-0 sizing;
+            this mirrors that pattern instead of letting tall content scroll. */}
+        <div className="flex flex-col min-h-0 px-8 py-7 overflow-hidden border-r border-white/5">
 
           {hasCourtView && activeJogosBlocks.length > 0 ? (
             /* ── One category at a time, full scale, alternating like the ──

@@ -1,9 +1,9 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { rulesFromTournament, rulesHint } from '@/lib/match-rules'
 import type { Match, Player, Tournament, MatchRules } from '@/types'
 import ScoreInput from './ScoreInput'
+import BackLink from '@/app/components/BackLink'
 
 async function getData(id: string) {
   const [{ data: tournament }, { data: matches }, { data: players }] = await Promise.all([
@@ -176,9 +176,7 @@ export default async function MatchesPage({ params }: { params: Promise<{ id: st
 
       {/* Header */}
       <div className="space-y-3">
-        <Link href={`/admin/tournaments/${id}`} className="text-sm font-bold text-[#C8F135] active:opacity-70 transition-opacity">
-          ← Torneio
-        </Link>
+        <BackLink href={`/admin/tournaments/${id}`} label="Torneio" className="text-sm font-bold text-[#C8F135] active:opacity-70" />
         <div className="flex items-end justify-between">
           <h1 className="text-2xl font-black text-[#F0F0F0]">Partidas</h1>
           <span className="text-xs font-bold text-[#888888] pb-0.5">{totalDone}/{matches.length} concluídas</span>

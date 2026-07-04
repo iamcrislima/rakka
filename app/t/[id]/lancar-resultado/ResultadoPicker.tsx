@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { isValidFinalScore, maxScore } from '@/lib/match-rules'
-import { submitMatchResult } from '@/app/admin/tournaments/[id]/matches/actions'
+import { submitPublicMatchResult } from './actions'
 import type { Match, MatchRules } from '@/types'
 
 export interface MatchCardInfo {
@@ -169,7 +169,7 @@ function ScoreScreen({ tournamentName, card, name, rules, onBack, onSaved }: {
     setError(null)
     const finalS1 = isTied6x6 ? (tbN1 > tbN2 ? rules.max_games + 1 : rules.max_games) : n1
     const finalS2 = isTied6x6 ? (tbN2 > tbN1 ? rules.max_games + 1 : rules.max_games) : n2
-    const result = await submitMatchResult(match.id, finalS1, finalS2)
+    const result = await submitPublicMatchResult(match.id, finalS1, finalS2)
     setSaving(false)
     if (!result.ok) {
       setError(result.error ?? 'Não foi possível salvar o resultado.')

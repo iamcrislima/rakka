@@ -273,22 +273,32 @@ export default function ScoreInput({ matchId, tournamentId, stage, rules, starte
     )
   }
 
+  // Score entry is gated behind starting the match — nothing to confirm yet.
+  if (!editing && !startedAt) {
+    return (
+      <button
+        onClick={handleStart}
+        disabled={startingMatch}
+        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#C8F135] text-[#0A0A0A] text-sm font-black uppercase tracking-wide hover:bg-[#D4F54A] transition-colors active:scale-[0.97] disabled:opacity-50"
+      >
+        {startingMatch ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="w-3.5 h-3.5 border-2 border-[#0A0A0A]/30 border-t-[#0A0A0A] rounded-full animate-spin inline-block" />
+            Iniciando...
+          </span>
+        ) : (
+          '▶ Iniciar jogo'
+        )}
+      </button>
+    )
+  }
+
   return (
     <div className="space-y-4 pt-1">
 
-      {/* Start match — records started_at so duration can be tracked */}
-      {!editing && !startedAt && (
-        <button
-          onClick={handleStart}
-          disabled={startingMatch}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-[#242424] text-[#888888] text-xs font-bold hover:border-[#C8F135]/40 hover:text-[#C8F135] transition-colors disabled:opacity-50"
-        >
-          ▶ Iniciar partida
-        </button>
-      )}
       {!editing && startedAt && (
         <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-red-400 tabular-nums">
-          ⏱ {formatElapsed(Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)))}
+          🔴 Em andamento · {formatElapsed(Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000)))}
         </div>
       )}
 

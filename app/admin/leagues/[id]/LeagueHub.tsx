@@ -7,6 +7,7 @@ import { removeStageAction } from './actions'
 import AddStageButton from './AddStageButton'
 import { positionLabel, pointsForPosition } from '@/lib/league-scoring'
 import type { League, LeagueStage, Tournament, Player, Match, LeaguePlayerStats } from '@/types'
+import BackLink from '@/app/components/BackLink'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -56,9 +57,7 @@ export default function LeagueHub({ league, stages, leagueRanking, availableTour
 
         {/* Mobile */}
         <div className="lg:hidden">
-          <Link href="/admin/leagues" className="text-[10px] font-black uppercase tracking-widest text-white/40">
-            ← Ligas
-          </Link>
+          <BackLink href="/admin/leagues" label="Ligas" className="text-[10px] font-black uppercase tracking-widest text-white/40" />
           <h1 className="text-xl font-black mt-1">{league.name}</h1>
           {league.description && <p className="text-sm text-white/50 mt-0.5">{league.description}</p>}
           <p className="text-xs text-white/40 font-bold mt-2">
@@ -69,9 +68,7 @@ export default function LeagueHub({ league, stages, leagueRanking, availableTour
         {/* Desktop */}
         <div className="hidden lg:flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/admin/leagues" className="text-white/50 hover:text-white/80 text-sm font-bold transition-colors shrink-0">
-              ← Ligas
-            </Link>
+            <BackLink href="/admin/leagues" label="Ligas" className="text-white/50 hover:text-white/80 text-sm font-bold shrink-0" />
             <div className="w-px h-5 bg-white/20" />
             <div>
               <h1 className="text-2xl font-black">{league.name}</h1>

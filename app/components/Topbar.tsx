@@ -1,8 +1,8 @@
 'use client'
 
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTopbar } from './TopbarContext'
+import BackLink from './BackLink'
 
 /** Map pathname → static fallback title when no page calls useSetTopbar */
 const STATIC_TITLES: Record<string, string> = {
@@ -46,13 +46,11 @@ export default function Topbar() {
       <div className="flex items-center gap-3 min-w-0">
         {/* Back crumb — show only inside sub-pages */}
         {pathname !== '/admin' && !pathname.startsWith('/admin/leagues/new') && !pathname.startsWith('/admin/tournaments/new') && (
-          <Link
+          <BackLink
             href={getParentHref(pathname)}
-            className="text-xs font-bold transition-colors shrink-0 hidden xl:block"
-            style={{ color: 'var(--bt-subtle)' }}
-          >
-            ←
-          </Link>
+            label={getParentLabel(pathname)}
+            className="text-xs font-bold shrink-0 hidden xl:flex hover:opacity-80 text-[color:var(--bt-subtle)]"
+          />
         )}
 
         <div className="min-w-0">
@@ -93,4 +91,11 @@ function getParentHref(pathname: string): string {
   if (pathname.startsWith('/admin/leagues/')     && pathname !== '/admin/leagues/new')     return '/admin/leagues'
   if (pathname.startsWith('/admin/registrations/'))                                          return '/admin'
   return '/admin'
+}
+
+function getParentLabel(pathname: string): string {
+  if (pathname.startsWith('/admin/tournaments/') && pathname !== '/admin/tournaments/new') return 'Torneios'
+  if (pathname.startsWith('/admin/leagues/')     && pathname !== '/admin/leagues/new')     return 'Ligas'
+  if (pathname.startsWith('/admin/registrations/'))                                          return 'Torneios'
+  return 'Torneios'
 }

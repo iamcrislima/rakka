@@ -15,15 +15,24 @@ async function getData(tournamentId: string) {
   }
 }
 
-export default async function RevelacaoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RevelacaoPage({ params, searchParams }: {
+  params:       Promise<{ id: string }>
+  searchParams: Promise<{ categoryId?: string }>
+}) {
   const { id } = await params
+  const { categoryId } = await searchParams
   const { tournament, categories } = await getData(id)
 
   if (!tournament) {
     return <NotReady tournamentId={id} reason="Torneio não encontrado." />
   }
 
-  const mistoCategory = categories.find(c => c.format === 'super8_misto') ?? null
+  // A categoryId is passed when opened from that category's own admin page
+  // (the normal path) — falls back to the first Super Oito Misto category
+  // found for backwards compatibility with any link missing the param.
+  const mistoCategory = (categoryId ? categories.find(c => c.id === categoryId) : null)
+    ?? categories.find(c => c.format === 'super8_misto')
+    ?? null
 
   if (!mistoCategory) {
     return <NotReady tournamentId={id} reason="Este torneio não tem uma categoria Super Oito Misto." />
@@ -67,6 +76,7 @@ export default async function RevelacaoPage({ params }: { params: Promise<{ id: 
 
   return (
     <RevelationCeremony
+      tournamentId={id}
       tournamentName={tournament.name}
       categoryName={mistoCategory.name}
       kingRanking={kingRanking}

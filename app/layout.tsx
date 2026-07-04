@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Barlow_Condensed } from 'next/font/google'
 import AppShell from './components/AppShell'
 import { TopbarProvider } from './components/TopbarContext'
+import { DEFAULT_TITLE, DEFAULT_DESCRIPTION, buildOpenGraph, buildTwitter } from '@/lib/seo'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
@@ -12,8 +13,11 @@ const barlowCondensed = Barlow_Condensed({
 })
 
 export const metadata: Metadata = {
-  title: 'Rakka',
-  description: 'Gerencie seus torneios esportivos',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
+  title:        DEFAULT_TITLE,
+  description:  DEFAULT_DESCRIPTION,
+  openGraph:    buildOpenGraph({ title: DEFAULT_TITLE, description: DEFAULT_DESCRIPTION }),
+  twitter:      buildTwitter({ title: DEFAULT_TITLE, description: DEFAULT_DESCRIPTION }),
 }
 
 export const viewport: Viewport = {

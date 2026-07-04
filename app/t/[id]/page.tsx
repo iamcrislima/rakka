@@ -1,7 +1,37 @@
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
+import { buildOpenGraph, buildTwitter } from '@/lib/seo'
 import type { Tournament, Category, Player, Match } from '@/types'
 import TournamentPublicPage from './TournamentPublicPage'
+
+// ── Metadata ────────────────────────────────────────────────
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: tournament } = await supabase
+    .from('tournaments')
+    .select('name')
+    .eq('id', id)
+    .single()
+
+  if (!tournament) return {}
+
+  const title       = tournament.name as string
+  const description = `Acompanhe o ${title} ao vivo`
+
+  return {
+    title,
+    description,
+    openGraph: buildOpenGraph({ title, description }),
+    twitter:   buildTwitter({ title, description }),
+  }
+}
 
 // ── Exported types used by the client component ───────────
 

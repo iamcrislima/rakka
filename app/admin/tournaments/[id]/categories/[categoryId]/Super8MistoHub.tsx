@@ -7,16 +7,17 @@
  * individual Rei/Rainha da Quadra leaderboard.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { Tournament, Category, Player, Match, MatchRules, Court, PlayerGender } from '@/types'
 import type { MatchSeed } from '@/lib/match-generator'
-import { computeSuper8MistoResult, type Super8MistoValidation, SUPER8_MISTO_MATCHES, SUPER8_MISTO_ROUNDS } from '@/lib/super8-misto'
+import { computeSuper8MistoResult, getCurrentSuper8MistoRound, type Super8MistoValidation, SUPER8_MISTO_MATCHES, SUPER8_MISTO_ROUNDS } from '@/lib/super8-misto'
 import { rulesHint } from '@/lib/match-rules'
 import MatchCard, { MatchDurationStats } from '../../MatchCard'
 import StartGroupStageButton from '../../StartGroupStageButton'
+import BackLink from '@/app/components/BackLink'
 
 type TabId = 'matches' | 'ranking'
 
@@ -35,7 +36,8 @@ export default function Super8MistoHub(props: HubProps) {
   const { tournament, category, matches } = props
   const [tab, setTab] = useState<TabId>('matches')
   const hasMatches = matches.length > 0
-  const allDone    = hasMatches && matches.every(m => m.status === 'done') && category.status !== 'done'
+  const matchesComplete = hasMatches && matches.every(m => m.status === 'done')
+  const allDone    = matchesComplete && category.status !== 'done'
 
   return (
     <div>
@@ -62,6 +64,7 @@ export default function Super8MistoHub(props: HubProps) {
         {!hasMatches
           ? <SetupPanel {...props} />
           : tab === 'matches' ? <MatchesPanel {...props} /> : <RankingPanel {...props} />}
+        {matchesComplete && <CeremonyLink tournamentId={tournament.id} categoryId={category.id} />}
         {allDone && <FinishCategoryButton categoryId={category.id} />}
       </div>
 
@@ -72,10 +75,29 @@ export default function Super8MistoHub(props: HubProps) {
         </div>
         <div className="sticky top-24 space-y-4">
           {hasMatches && <RankingPanel {...props} />}
+          {matchesComplete && <CeremonyLink tournamentId={tournament.id} categoryId={category.id} />}
           {allDone && <FinishCategoryButton categoryId={category.id} />}
         </div>
       </div>
     </div>
+  )
+}
+
+// ── Ceremony link — enabled only once every match in THIS category is
+// done; opens in a new tab since it typically runs on a separate physical
+// screen while the organizer keeps working here (same reasoning as Modo TV). ──
+
+function CeremonyLink({ tournamentId, categoryId }: { tournamentId: string; categoryId: string }) {
+  return (
+    <a
+      href={`/t/${tournamentId}/tv/revelacao?categoryId=${categoryId}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl font-black text-sm uppercase tracking-wide transition-transform active:scale-[0.97]"
+      style={{ background: '#C8F135', color: '#0A0A0A' }}
+    >
+      🎉 Cerimônia de Revelação
+    </a>
   )
 }
 
@@ -90,9 +112,7 @@ function Banner({ tournament, category, rules }: { tournament: Tournament; categ
       <div className="absolute -right-8 -top-8 w-48 h-48 rounded-full bg-white/5 pointer-events-none" />
       <div className="relative flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <Link href={`/admin/tournaments/${tournament.id}`} className="text-white/50 hover:text-white/80 text-sm font-bold transition-colors shrink-0">
-            ← {tournament.name}
-          </Link>
+          <BackLink href={`/admin/tournaments/${tournament.id}`} label={tournament.name} className="text-white/50 hover:text-white/80 text-sm font-bold shrink-0" />
           <div className="w-px h-5 bg-white/20 hidden lg:block" />
           <h1 className="font-display text-xl lg:text-2xl font-bold uppercase tracking-tight leading-tight truncate">{category.name}</h1>
         </div>
@@ -402,7 +422,7 @@ function MatchesPanel({ tournament, category, players, matches, rules, courts }:
           <div className="flex items-center gap-2 px-0.5">
             <span className="text-xs font-black uppercase tracking-widest text-[#C8F135]">Rodada {ms[0].round}</span>
           </div>
-          <div className="stagger space-y-2.5">
+          <div className="stagger grid grid-cols-1 2xl:grid-cols-2 gap-2.5">
             {ms.map(m => (
               <MatchCard
                 key={m.id}
@@ -458,13 +478,57 @@ function NextMatchCard({ match, name, courts }: {
 
 // ── Ranking panel — Rei / Rainha da Quadra ────────────────────
 
-function RankingPanel({ players, matches }: HubProps) {
+// Same "hide from round 5" rule as the TV mode's ranking rotator — but here
+// it's just the DEFAULT, since anyone glancing at the organizer's own screen
+// (over the shoulder, or on the laptop itself) can otherwise see who's
+// winning before the reveal. Always manually overridable, and remembered
+// per category via localStorage.
+function RankingPanel({ category, players, matches }: HubProps) {
   const { kingRanking, queenRanking } = computeSuper8MistoResult(players, matches)
+  const round = getCurrentSuper8MistoRound(matches)
+  const autoHideDefault = round >= 5
+  const storageKey = `s8misto-ranking-hidden-${category.id}`
+
+  const [hidden, setHidden] = useState<boolean | null>(null)
+  useEffect(() => {
+    const stored = window.localStorage.getItem(storageKey)
+    setHidden(stored !== null ? stored === '1' : autoHideDefault)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey])
+
+  const isHidden = hidden ?? autoHideDefault
+
+  function toggle() {
+    const next = !isHidden
+    window.localStorage.setItem(storageKey, next ? '1' : '0')
+    setHidden(next)
+  }
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      <GenderRanking title="Rei da Quadra"    icon="👑" color="bg-[#C8F135]" textColor="text-[#C8F135]" stats={kingRanking} />
-      <GenderRanking title="Rainha da Quadra" icon="👑" color="bg-pink-500"   textColor="text-pink-600"   stats={queenRanking} />
+    <div className="space-y-4 animate-fade-in">
+      <button
+        type="button"
+        onClick={toggle}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-[#161616] border border-[#242424] hover:border-[#3a3a3a] transition-colors"
+      >
+        <span className="text-xs font-bold text-[#888888]">
+          {isHidden ? '🙈 Ranking oculto' : '👁️ Ranking visível'}
+        </span>
+        <span className="text-[10px] font-black uppercase tracking-widest text-[#C8F135]">
+          {isHidden ? 'Mostrar' : 'Ocultar'}
+        </span>
+      </button>
+
+      {isHidden ? (
+        <div className="rounded-2xl border border-dashed border-[#242424] px-4 py-10 text-center">
+          <p className="text-sm font-bold text-[#6B6B6B]">Ranking oculto — clique acima para mostrar</p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <GenderRanking title="Rei da Quadra"    icon="👑" color="bg-[#C8F135]" textColor="text-[#C8F135]" stats={kingRanking} />
+          <GenderRanking title="Rainha da Quadra" icon="👑" color="bg-pink-500"   textColor="text-pink-600"   stats={queenRanking} />
+        </div>
+      )}
     </div>
   )
 }

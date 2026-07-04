@@ -1,8 +1,8 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { computeRanking } from '@/lib/ranking'
 import type { Match, Player, PlayerStats } from '@/types'
+import BackLink from '@/app/components/BackLink'
 
 async function getData(id: string) {
   const [{ data: players }, { data: matches }] = await Promise.all([
@@ -29,7 +29,7 @@ export default async function RankingPage({ params }: { params: Promise<{ id: st
 
       {/* Header */}
       <div className="space-y-1">
-        <Link href={`/admin/tournaments/${id}`} className="text-sm font-bold text-[#C8F135] active:opacity-70 transition-opacity">← Torneio</Link>
+        <BackLink href={`/admin/tournaments/${id}`} label="Torneio" className="text-sm font-bold text-[#C8F135] active:opacity-70" />
         <h1 className="text-2xl font-black text-[#F0F0F0]">Ranking</h1>
         <p className="text-xs text-[#888888]">Top 2 de cada grupo avançam para as finais</p>
       </div>

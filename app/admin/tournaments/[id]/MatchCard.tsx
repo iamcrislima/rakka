@@ -368,12 +368,19 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
 
   const bodyBg = isFinal && !isDone ? 'bg-amber-500/[0.04]' : 'bg-[#161616]'
 
-  // ── Status badge (Concluído / Agendado / A disputar)
+  // Score entry only opens up once the organizer has tapped "Iniciar jogo" —
+  // before that, there's nothing to type in yet, just the matchup.
+  const notStarted = !isDone && !isLocked && !startedAt
+  const inProgress = !isDone && !isLocked && !!startedAt
+
+  // ── Status badge (Concluído / Agendado / Em andamento / Não iniciado)
   const statusBadge = isDone
     ? { label: '✓ Concluído', bg: 'rgba(34,197,94,0.15)', color: '#22C55E' }
     : isLocked
       ? { label: '🔒 Agendado', bg: 'rgba(245,158,11,0.15)', color: '#f59e0b' }
-      : { label: '● A disputar', bg: 'var(--bt-neon-dim)', color: 'var(--bt-neon)' }
+      : inProgress
+        ? { label: '🔴 Em andamento', bg: 'rgba(239,68,68,0.15)', color: '#FF4444' }
+        : { label: '○ Não iniciado', bg: 'rgba(255,255,255,0.06)', color: '#888888' }
 
   return (
     <div className={`rounded-2xl overflow-hidden shadow-sm ${cardBorder}`}>
@@ -441,16 +448,25 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
             isWinner={isDone ? t1Wins : null}
             align="left"
           />
-          <ScoreCenter
-            isDone={isDone}
-            editing={editing}
-            storedS1={m.score1} storedS2={m.score2}
-            s1={s1} s2={s2} tb1={tb1} tb2={tb2}
-            onS1={setS1} onS2={setS2} onTb1={setTb1} onTb2={setTb2}
-            isTied6x6={isTied6x6}
-            rules={rules}
-            maxGames={maxGames}
-          />
+          {notStarted ? (
+            <div className="flex flex-col items-center gap-1.5 px-3 sm:px-5">
+              <span className="text-2xl leading-none text-[#444444]">VS</span>
+              <span className="text-[9px] font-bold text-[#6B6B6B] uppercase tracking-wider text-center">
+                Aguardando início
+              </span>
+            </div>
+          ) : (
+            <ScoreCenter
+              isDone={isDone}
+              editing={editing}
+              storedS1={m.score1} storedS2={m.score2}
+              s1={s1} s2={s2} tb1={tb1} tb2={tb2}
+              onS1={setS1} onS2={setS2} onTb1={setTb1} onTb2={setTb2}
+              isTied6x6={isTied6x6}
+              rules={rules}
+              maxGames={maxGames}
+            />
+          )}
           <TeamColumn
             p1={name(m.team2_p1)} p2={name(m.team2_p2)}
             isWinner={isDone ? t2Wins : null}
@@ -528,17 +544,26 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
             ✏️ Editar resultado
           </button>
         </div>
+      ) : notStarted ? (
+        /* ── Score entry is gated behind this — nothing to confirm yet ── */
+        <div className="px-4 pb-4">
+          <button
+            onClick={handleStart}
+            disabled={startingMatch}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#C8F135] text-[#0A0A0A] text-sm font-black uppercase tracking-wide hover:bg-[#D4F54A] transition-colors active:scale-[0.97] disabled:opacity-50"
+          >
+            {startingMatch ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-3.5 h-3.5 border-2 border-[#0A0A0A]/30 border-t-[#0A0A0A] rounded-full animate-spin inline-block" />
+                Iniciando...
+              </span>
+            ) : (
+              '▶ Iniciar jogo'
+            )}
+          </button>
+        </div>
       ) : (!isDone || editing) && (
         <div className="px-4 pb-4 space-y-2">
-          {!isDone && !startedAt && (
-            <button
-              onClick={handleStart}
-              disabled={startingMatch}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-[#242424] text-[#888888] text-xs font-bold hover:border-[#C8F135]/40 hover:text-[#C8F135] transition-colors disabled:opacity-50"
-            >
-              ▶ Iniciar partida
-            </button>
-          )}
           {scoreHint && (
             <p className="text-center text-xs font-bold text-[#FF4444] animate-fade-in">{scoreHint}</p>
           )}

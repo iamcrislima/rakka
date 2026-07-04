@@ -247,6 +247,8 @@ export default async function PlayerProfilePage({
       category_id:   cId,
       position:      0,
       gender:        'M',
+      checked_in:    false,
+      checked_in_at: null,
     }))
 
     const ranking = computeRanking(groupPlayers, groupMatches)

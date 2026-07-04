@@ -42,6 +42,8 @@ export interface Player {
   name:          string
   position:      number
   gender:        PlayerGender
+  checked_in:    boolean
+  checked_in_at: string | null
 }
 
 export interface Match {
