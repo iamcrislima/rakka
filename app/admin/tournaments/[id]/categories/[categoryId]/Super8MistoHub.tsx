@@ -13,12 +13,13 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { Tournament, Category, Player, Match, MatchRules, Court, PlayerGender } from '@/types'
 import type { MatchSeed } from '@/lib/match-generator'
-import { computeSuper8MistoResult, getCurrentSuper8MistoRound, type Super8MistoValidation, SUPER8_MISTO_MATCHES, SUPER8_MISTO_ROUNDS } from '@/lib/super8-misto'
+import { computeSuper8MistoResult, getCurrentSuper8MistoRound, repairSuper8MistoOpponents, type Super8MistoValidation, SUPER8_MISTO_MATCHES, SUPER8_MISTO_ROUNDS } from '@/lib/super8-misto'
 import { computeRoundSchedule, type RoundPrediction } from '@/lib/round-schedule'
 import { rulesHint } from '@/lib/match-rules'
 import MatchCard, { MatchDurationStats } from '../../MatchCard'
 import StartGroupStageButton from '../../StartGroupStageButton'
 import BackLink from '@/app/components/BackLink'
+import { repairSuper8MistoCategory } from './actions'
 
 type TabId = 'matches' | 'players' | 'ranking'
 
@@ -510,9 +511,29 @@ function ScheduleAndCourtsCard({ tournament, category, courts }: {
 // ── Matches panel ─────────────────────────────────────────────
 
 function MatchesPanel({ tournament, category, players, matches, rules, courts }: HubProps) {
+  const router = useRouter()
   const playerMap = Object.fromEntries(players.map(p => [p.id, p]))
   const name      = (id: string) => playerMap[id]?.name ?? '?'
   const done      = matches.filter(m => m.status === 'done').length
+
+  // ── Opponent-rotation bug repair — see lib/super8-misto.ts. Only shows up
+  // when there's actually something to fix (rounds that are still fully
+  // untouched); disappears on its own once every round has either started
+  // or finished, since repairSuper8MistoOpponents returns nothing for those.
+  const repairPreview = repairSuper8MistoOpponents(players, matches)
+  const [repairing, setRepairing] = useState(false)
+  const [repairDone, setRepairDone] = useState(false)
+  const [repairError, setRepairError] = useState('')
+
+  async function handleRepair() {
+    setRepairing(true)
+    setRepairError('')
+    const result = await repairSuper8MistoCategory(category.id)
+    setRepairing(false)
+    if (!result.ok) { setRepairError(result.error ?? 'Não foi possível corrigir.'); return }
+    setRepairDone(true)
+    router.refresh()
+  }
 
   const nextMatch = [...matches].sort((a, b) => a.round - b.round).find(m => m.status === 'pending')
 
@@ -542,6 +563,35 @@ function MatchesPanel({ tournament, category, players, matches, rules, courts }:
 
   return (
     <div className="space-y-5 animate-fade-in">
+
+      {/* ── Opponent-rotation bug fix — appears only while there are still
+          untouched rounds to correct; gone on its own once every round has
+          started or finished. Never alters a played or in-progress match. ── */}
+      {repairPreview.length > 0 && !repairDone && (
+        <div className="rounded-2xl border-2 border-amber-500/40 bg-amber-500/10 px-4 py-3.5 space-y-2.5">
+          <p className="text-sm font-black text-amber-400">⚠️ Correção disponível: adversários repetidos</p>
+          <p className="text-xs text-[#F0F0F0] leading-snug">
+            As partidas ainda não iniciadas desta categoria foram geradas com um bug que fazia cada homem
+            enfrentar sempre o mesmo adversário em todas as rodadas (só a parceira variava). Esta correção
+            reorganiza apenas as rodadas que ainda não começaram — {repairPreview.length} partida{repairPreview.length !== 1 ? 's' : ''}
+            {' '}— para variar os confrontos. Partidas já jogadas ou em andamento não são alteradas.
+          </p>
+          {repairError && <p className="text-xs font-bold text-[#FF4444]">{repairError}</p>}
+          <button
+            onClick={handleRepair}
+            disabled={repairing}
+            className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-[#0A0A0A] text-xs font-black rounded-xl disabled:opacity-50 transition-colors"
+          >
+            {repairing ? 'Corrigindo...' : 'Corrigir agora'}
+          </button>
+        </div>
+      )}
+      {repairDone && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs font-bold text-emerald-400">
+          ✓ Rodadas futuras corrigidas — adversários agora variam a cada rodada.
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
           done === matches.length ? 'text-emerald-400 bg-emerald-50' : 'text-[#C8F135] bg-[#1C1C1C]'
