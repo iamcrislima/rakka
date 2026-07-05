@@ -41,5 +41,5 @@ export default async function CheckInPage({
         players: allPlayers.map(p => ({ id: p.id, name: p.name, checked_in: p.checked_in ?? false })),
       }]
 
-  return <CheckInList tournamentName={t.name as string} groups={groups} />
+  return <CheckInList tournamentId={id} tournamentName={t.name as string} groups={groups} />
 }

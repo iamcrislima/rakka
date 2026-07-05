@@ -1268,24 +1268,30 @@ export interface CategoryCheckInStatus {
   categoryName: string
   checkedIn:    number
   total:        number
+  /** null = no scheduled start, treated as "already started" (no time gate). */
+  scheduledAt:  string | null
+  /** category.status is group_stage or finals — already live, not just registered. */
+  isRunning:    boolean
 }
 
-function CheckInQR({ tournamentId }: { tournamentId: string }) {
+function CheckInQR({ tournamentId, size = 280 }: { tournamentId: string; size?: number }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const link = `${window.location.origin}/t/${tournamentId}/checkin`
-    QRCode.toDataURL(link, { width: 320, margin: 1, color: { dark: '#0A0A0A', light: '#FFFFFF' } })
+    QRCode.toDataURL(link, { width: size * 2, margin: 1, color: { dark: '#0A0A0A', light: '#FFFFFF' } })
       .then(d => { if (!cancelled) setDataUrl(d) })
       .catch(() => { if (!cancelled) setDataUrl(null) })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentId])
 
-  if (!dataUrl) return <div className="w-[280px] h-[280px] rounded-3xl bg-white/10 animate-pulse shrink-0" />
+  const px = `${size}px`
+  if (!dataUrl) return <div className="rounded-3xl bg-white/10 animate-pulse shrink-0" style={{ width: px, height: px }} />
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={dataUrl} alt="QR code de check-in" width={280} height={280} className="rounded-3xl bg-white p-4 shrink-0" />
+    <img src={dataUrl} alt="QR code de check-in" width={size} height={size} className="rounded-3xl bg-white p-4 shrink-0" style={{ width: px, height: px }} />
   )
 }
 
@@ -1328,6 +1334,46 @@ function CheckInWelcomeScreen({ tournament, checkInStatus }: {
         </div>
       )}
     </div>
+  )
+}
+
+// ── Check-in side banner — shown during the normal Jogos/Painel/Mural
+// rotation once a category's scheduled start time has passed but it still
+// has players who haven't checked in (the fullscreen welcome screen already
+// exited by then). Picks the single most relevant incomplete category —
+// preferring one that's already running over one still in draft, then the
+// soonest scheduled start — and recomputes on every render, so it naturally
+// switches to the next relevant category (or disappears entirely) as each
+// one crosses 100% on its own, independent of the others. ──────────────
+
+function pickBannerCategory(pending: CategoryCheckInStatus[]): CategoryCheckInStatus | null {
+  if (pending.length === 0) return null
+  const running = pending.filter(c => c.isRunning)
+  const pool = running.length > 0 ? running : pending
+  return [...pool].sort((a, b) => {
+    const ta = a.scheduledAt ? new Date(a.scheduledAt).getTime() : Infinity
+    const tb = b.scheduledAt ? new Date(b.scheduledAt).getTime() : Infinity
+    return ta - tb
+  })[0]
+}
+
+function CheckInSideBanner({ tournamentId, category }: {
+  tournamentId: string
+  category:     CategoryCheckInStatus
+}) {
+  const pct = category.total > 0 ? Math.round((category.checkedIn / category.total) * 100) : 0
+  return (
+    <aside className="w-[128px] shrink-0 border-r border-white/6 bg-[#0c1526] flex flex-col items-center justify-center gap-3 px-3 py-6 text-center">
+      <CheckInQR tournamentId={tournamentId} size={72} />
+      <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Faltam confirmar</p>
+      <p className="text-xs font-bold text-white leading-tight">{category.categoryName}</p>
+      <p className="font-display text-xl font-bold tabular-nums leading-none" style={{ color: '#C8F135' }}>
+        {category.checkedIn}/{category.total}
+      </p>
+      <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: '#C8F135' }} />
+      </div>
+    </aside>
   )
 }
 
@@ -1426,6 +1472,32 @@ export default function TVDisplay({
   // not-yet-started category's roster was silently excluded, undercounting
   // its total to 0/0 even when players were genuinely registered.
 
+  // ── Per-category check-in gating — ticks every second (useNow) so a
+  // category crossing its scheduled_at, or completing 100% check-in, is
+  // picked up live without waiting on a realtime DB event or the 60s poll.
+  // A category with 0 registered players never counts as "pending" — there's
+  // nobody to welcome or chase down yet, so it can't block the transition.
+  const nowTick = useNow(true)
+  const checkInDerived = useMemo(() => checkInStatus.map(c => {
+    const hasStarted = !c.scheduledAt || nowTick >= new Date(c.scheduledAt).getTime()
+    const isComplete = c.total > 0 && c.checkedIn === c.total
+    return {
+      ...c,
+      hasStarted,
+      isComplete,
+      // Fullscreen welcome/check-in still owes this category a moment.
+      pendingWelcome: c.total > 0 && !hasStarted && !isComplete,
+      // Time's up, but stragglers haven't checked in — side banner's job.
+      pendingLate:    c.total > 0 && hasStarted && !isComplete,
+    }
+  }), [checkInStatus, nowTick])
+
+  const hasPendingWelcome = checkInDerived.some(c => c.pendingWelcome)
+  const bannerCategory = useMemo(
+    () => pickBannerCategory(checkInDerived.filter(c => c.pendingLate)),
+    [checkInDerived],
+  )
+
   // ── Screen rotation — 'jogos' is the existing courts/ranking view
   // (renamed), 'painel' consolidates progress/agenda/destaque/hype into
   // one screen with fixed regions + an internal ticker. 'mural' is always
@@ -1433,11 +1505,14 @@ export default function TVDisplay({
   // inviting empty state + the QR code, since that's exactly when you most
   // want to advertise it.
   //
-  // 'checkin' takes over EXCLUSIVELY while the tournament hasn't started
-  // (status === 'draft') — there's nothing live to show yet regardless,
-  // and starting the tournament is itself the organizer's call to proceed
-  // even with check-ins still pending, so status alone is the gate.
-  const screens: ScreenId[] = tournament.status === 'draft'
+  // 'checkin' takes over EXCLUSIVELY while at least one category still owes
+  // a fullscreen welcome moment (hasn't reached its scheduled start AND
+  // isn't 100% checked in yet). The instant EITHER condition flips for
+  // every category — time arrives, or check-in hits 100% even early — this
+  // exits fullscreen on its own; a category whose time passed but still has
+  // stragglers doesn't hold the whole rotation hostage, it just gets the
+  // side banner instead (see bannerCategory above).
+  const screens: ScreenId[] = hasPendingWelcome
     ? ['checkin']
     : ['jogos', 'painel', 'mural']
 
@@ -1549,6 +1624,17 @@ export default function TVDisplay({
 
       {/* ── Screen rotation tab bar — discreet, never competes with content ── */}
       <ScreenTabBar screens={screens} activeScreen={activeScreen} nextScreen={nextScreen} />
+
+      {/* ── Row holding the optional check-in side banner + active screen —
+          the banner only makes sense once we've left the fullscreen welcome
+          screen (activeScreen !== 'checkin') and only while some category
+          still has stragglers past its start time (bannerCategory !== null).
+          It disappears on its own the instant that category reaches 100%,
+          since bannerCategory is recomputed from live data every render. ── */}
+      <div className="flex-1 flex overflow-hidden">
+        {activeScreen !== 'checkin' && bannerCategory && (
+          <CheckInSideBanner tournamentId={tournament.id} category={bannerCategory} />
+        )}
 
       {/* ── Active screen (fades between rotation steps) ─────── */}
       <div
@@ -1676,6 +1762,8 @@ export default function TVDisplay({
 
       </div>
       )}
+
+      </div>
 
       </div>
 

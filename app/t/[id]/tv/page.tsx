@@ -354,6 +354,8 @@ export default async function TVPage({ params }: { params: Promise<{ id: string 
       categoryName: c.name,
       checkedIn:    catPlayers.filter(p => p.checked_in).length,
       total:        catPlayers.length,
+      scheduledAt:  c.scheduled_at,
+      isRunning:    c.status === 'group_stage' || c.status === 'finals',
     }
   })
 
