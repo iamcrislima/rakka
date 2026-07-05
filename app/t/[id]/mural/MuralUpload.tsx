@@ -1,9 +1,21 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { uploadMuralPhoto } from './actions'
+import { createClient } from '@/lib/supabase/client'
+import { prepareMuralPhotoUpload, registerMuralPhoto } from './actions'
 
 const MAX_SIZE = 5 * 1024 * 1024 // 5MB
+const UPLOAD_TIMEOUT_MS = 30_000
+
+function withTimeout<T>(promise: PromiseLike<T>, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), UPLOAD_TIMEOUT_MS)
+    Promise.resolve(promise).then(
+      value => { window.clearTimeout(timer); resolve(value) },
+      error => { window.clearTimeout(timer); reject(error) },
+    )
+  })
+}
 
 export default function MuralUpload({ tournamentId, tournamentName }: { tournamentId: string; tournamentName: string }) {
   const [file, setFile]         = useState<File | null>(null)
@@ -28,13 +40,40 @@ export default function MuralUpload({ tournamentId, tournamentName }: { tourname
     setUploading(true)
     setError('')
 
-    const formData = new FormData()
-    formData.append('file', file)
-    const result = await uploadMuralPhoto(tournamentId, formData)
+    try {
+      const prepared = await withTimeout(
+        prepareMuralPhotoUpload(tournamentId, { name: file.name, type: file.type, size: file.size }),
+        'O servidor demorou para iniciar o envio. Verifique sua conexão e tente novamente.',
+      )
+      if (!prepared.ok) { setError(prepared.error); return }
 
-    setUploading(false)
-    if (!result.ok) { setError(result.error); return }
-    setDone(true)
+      const supabase = createClient()
+      const { error: uploadError } = await withTimeout(
+        supabase.storage.from('mural-photos').upload(prepared.path, file, {
+          contentType: file.type,
+          upsert: false,
+        }),
+        'O envio demorou mais de 30 segundos. Verifique sua conexão e tente novamente.',
+      )
+      if (uploadError) throw uploadError
+
+      const registered = await withTimeout(
+        registerMuralPhoto(tournamentId, prepared.path),
+        'A confirmação do envio demorou. Verifique sua conexão e tente novamente.',
+      )
+      if (!registered.ok) { setError(registered.error); return }
+
+      setDone(true)
+    } catch (uploadError) {
+      console.error('Mural photo upload failed', uploadError)
+      setError(
+        uploadError instanceof Error && uploadError.message.includes('demor')
+          ? uploadError.message
+          : 'Não foi possível enviar a foto. Verifique sua conexão e tente novamente.',
+      )
+    } finally {
+      setUploading(false)
+    }
   }
 
   if (done) {
