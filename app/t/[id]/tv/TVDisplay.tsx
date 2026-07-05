@@ -1188,23 +1188,30 @@ function seededRandom(seed: string): number {
 }
 
 function CollageFrame({ photos }: { photos: MuralPhoto[] }) {
-  const cols = photos.length <= 4 ? 2 : photos.length <= 9 ? 3 : 4
+  const cols = photos.length <= 4 ? 2 : photos.length <= 6 ? 3 : 4
+  const rows = Math.ceil(photos.length / cols)
   return (
-    <div className="w-full h-full grid gap-6 place-items-center" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+    <div
+      className="w-full h-full grid gap-3 place-items-center"
+      style={{
+        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+        gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+      }}
+    >
       {photos.map(p => {
         const rotate     = (seededRandom(p.id + 'r') - 0.5) * 14
-        const translateY = (seededRandom(p.id + 't') - 0.5) * 20
         return (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             key={p.id}
             src={p.url}
             alt="Foto do evento"
-            className="max-w-full object-contain rounded-lg shadow-2xl animate-fade-in"
+            className="w-full h-full object-contain rounded-lg shadow-2xl animate-fade-in"
             style={{
               border:     '4px solid rgba(255,255,255,0.92)',
-              transform:  `rotate(${rotate}deg) translateY(${translateY}px)`,
-              maxHeight:  '36vh',
+              transform:  `rotate(${rotate / 2}deg) scale(0.94)`,
+              maxWidth:   '100%',
+              maxHeight:  '100%',
             }}
           />
         )
@@ -1213,37 +1220,29 @@ function CollageFrame({ photos }: { photos: MuralPhoto[] }) {
   )
 }
 
-const MURAL_BANNER_HEIGHT = 110
-
-/** A thin lower-third banner across the full width of the Mural screen —
- *  same proportion as a sports-broadcast footer graphic, not a big square
- *  block. Reuses the same `qrcode` lib as the court/result QR cards. Still
- *  big enough to scan from a few meters away, since nobody walks up to a TV. */
-function MuralInviteBanner({ tournamentId }: { tournamentId: string }) {
+/** Compact invite in the mural header, leaving the entire grid unobstructed. */
+function MuralInvite({ tournamentId }: { tournamentId: string }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const link = `${window.location.origin}/t/${tournamentId}/mural`
-    QRCode.toDataURL(link, { width: 140, margin: 1, color: { dark: '#0A0A0A', light: '#FFFFFF' } })
+    QRCode.toDataURL(link, { width: 112, margin: 1, color: { dark: '#0A0A0A', light: '#FFFFFF' } })
       .then(d => { if (!cancelled) setDataUrl(d) })
       .catch(() => { if (!cancelled) setDataUrl(null) })
     return () => { cancelled = true }
   }, [tournamentId])
 
   return (
-    <div
-      className="absolute left-0 right-0 bottom-0 flex items-center gap-5 px-10 bg-black/70 border-t border-white/12 backdrop-blur-sm"
-      style={{ height: MURAL_BANNER_HEIGHT }}
-    >
+    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/35 px-3 py-2 shrink-0">
       {dataUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={dataUrl} alt="QR code" width={80} height={80} className="rounded-lg bg-white p-1.5 shrink-0" />
+        <img src={dataUrl} alt="QR code" width={52} height={52} className="rounded-md bg-white p-1 shrink-0" />
       ) : (
-        <div className="w-[80px] h-[80px] rounded-lg bg-white/10 animate-pulse shrink-0" />
+        <div className="w-[52px] h-[52px] rounded-md bg-white/10 animate-pulse shrink-0" />
       )}
-      <p className="font-display font-bold uppercase leading-snug text-white" style={{ fontSize: 'clamp(1rem, 1.6vw, 1.4rem)' }}>
-        Envie sua foto para aparecer no mural
+      <p className="max-w-[150px] text-[10px] font-black uppercase leading-snug tracking-wide text-white/70">
+        Envie sua foto para o mural
       </p>
     </div>
   )
@@ -1274,10 +1273,10 @@ function MuralCollageScreen({ photos, tournamentId }: { photos: MuralPhoto[]; to
 
   if (frames.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 relative" style={{ paddingBottom: MURAL_BANNER_HEIGHT }}>
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 relative">
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/25">Mural do Evento</p>
         <p className="text-white/30 text-lg font-bold">Nenhuma foto ainda — seja o primeiro a enviar!</p>
-        <MuralInviteBanner tournamentId={tournamentId} />
+        <MuralInvite tournamentId={tournamentId} />
       </div>
     )
   }
@@ -1286,24 +1285,24 @@ function MuralCollageScreen({ photos, tournamentId }: { photos: MuralPhoto[]; to
   const frame   = frames[safeIdx]
 
   return (
-    <div className="flex-1 flex flex-col gap-4 px-10 py-6 overflow-hidden relative">
+    <div className="flex-1 flex flex-col gap-3 px-6 py-4 overflow-hidden relative">
       <div className="flex items-center justify-between shrink-0">
         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/25">Mural do Evento</p>
-        {frames.length > 1 && (
-          <span className="text-[10px] font-bold text-white/20 tabular-nums uppercase tracking-wider">
-            {safeIdx + 1} / {frames.length}
-          </span>
-        )}
+        <div className="flex items-center gap-4">
+          {frames.length > 1 && (
+            <span className="text-[10px] font-bold text-white/20 tabular-nums uppercase tracking-wider">
+              {safeIdx + 1} / {frames.length}
+            </span>
+          )}
+          <MuralInvite tournamentId={tournamentId} />
+        </div>
       </div>
-      {/* Bottom padding reserves the banner's footprint so the collage grid
-          never places a photo underneath it. */}
       <div
         className="flex-1 min-h-0"
-        style={{ paddingBottom: MURAL_BANNER_HEIGHT, opacity: visible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}
+        style={{ opacity: visible ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` }}
       >
         <CollageFrame photos={frame} />
       </div>
-      <MuralInviteBanner tournamentId={tournamentId} />
     </div>
   )
 }
@@ -1683,7 +1682,7 @@ export default function TVDisplay({
           It disappears on its own the instant that category reaches 100%,
           since bannerCategory is recomputed from live data every render. ── */}
       <div className="flex-1 flex overflow-hidden">
-        {activeScreen !== 'checkin' && bannerCategory && (
+        {activeScreen !== 'checkin' && activeScreen !== 'mural' && bannerCategory && (
           <CheckInSideBanner tournamentId={tournament.id} category={bannerCategory} />
         )}
 

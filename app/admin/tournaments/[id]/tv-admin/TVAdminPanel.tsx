@@ -310,41 +310,64 @@ function NextCallsSection({ tournamentId, courts, refreshKey }: { tournamentId: 
   if (rows.every(r => !r.current && r.upcoming.length === 0)) return null
 
   return (
-    <div className="bg-[#161616] rounded-2xl border-2 border-[#C8F135]/30 shadow-sm overflow-hidden">
+    <div className="space-y-3">
       <div className="px-5 py-3.5 bg-[#C8F135]/10 border-b border-[#242424] flex items-center gap-2">
         <span className="text-sm">📢</span>
         <p className="text-xs font-black text-[#C8F135] uppercase tracking-widest">Quadras — todas as categorias</p>
       </div>
-      <div className="divide-y divide-[#242424]">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         {rows.map(({ court, current, upcoming }) => (
-          <div key={court.id} className="px-5 py-4 space-y-2">
+          <div key={court.id} className="rounded-2xl border border-[#2A2A2A] bg-[#111111] px-5 py-5 flex flex-col gap-3 min-w-0">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-black text-[#F0F0F0] truncate">🏟️ {court.name}</p>
+              <p className="text-lg font-black text-[#F0F0F0] truncate">🏟️ {court.name}</p>
               {current && (
-                <span className="text-[9px] font-bold text-red-400 uppercase tracking-wide shrink-0">🔴 Em andamento</span>
+                <span className="inline-flex items-center gap-1.5 text-[9px] font-black text-red-400 uppercase tracking-widest shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" /> Ao vivo
+                </span>
               )}
             </div>
 
-            {current && <CallRow match={current} catInfo={catOf(current)} n={n} label="Agora" />}
+            {current && (
+              <div className="space-y-1.5">
+                <p className="text-[9px] font-black text-[#555555] uppercase tracking-widest">
+                  {current.started_at
+                    ? `Início ${new Date(current.started_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                    : 'Agora'}
+                </p>
+                <CallRow match={current} catInfo={catOf(current)} n={n} emphasized />
+              </div>
+            )}
 
             {upcoming.length === 0 && !current && (
               <p className="text-sm font-bold text-[#6B6B6B]">— nenhuma partida na fila —</p>
             )}
 
-            {upcoming.map((m, i) => (
-              <div key={m.id} className="flex items-center gap-2">
-                <CallRow match={m} catInfo={catOf(m)} n={n} label={i === 0 ? 'Próxima' : undefined} />
-                {i === 0 && !current && (
-                  <button
-                    onClick={() => handleStart(m.id, court.id)}
-                    disabled={startingId === m.id}
-                    className="shrink-0 text-[10px] font-black uppercase tracking-wide px-2.5 py-1.5 rounded-lg bg-[#C8F135] text-[#0A0A0A] hover:bg-[#D4F54A] disabled:opacity-50 transition-colors"
-                  >
-                    {startingId === m.id ? '...' : '▶ Iniciar'}
-                  </button>
-                )}
+            {upcoming.length > 0 && (
+              <div className="pt-3 border-t border-[#242424] space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[9px] font-black text-[#555555] uppercase tracking-widest">Próxima</p>
+                  {!current && (
+                    <button
+                      onClick={() => handleStart(upcoming[0].id, court.id)}
+                      disabled={startingId === upcoming[0].id}
+                      className="shrink-0 text-[9px] font-black uppercase tracking-wide px-2.5 py-1.5 rounded-lg bg-[#C8F135] text-[#0A0A0A] hover:bg-[#D4F54A] disabled:opacity-50 transition-colors"
+                    >
+                      {startingId === upcoming[0].id ? '...' : '▶ Iniciar'}
+                    </button>
+                  )}
+                </div>
+                <CallRow match={upcoming[0]} catInfo={catOf(upcoming[0])} n={n} />
               </div>
-            ))}
+            )}
+
+            {upcoming.length > 1 && (
+              <div className="pt-3 border-t border-[#242424] space-y-2">
+                <p className="text-[9px] font-black text-[#484848] uppercase tracking-widest">Depois, nesta quadra</p>
+                {upcoming.slice(1).map(m => (
+                  <CallRow key={m.id} match={m} catInfo={catOf(m)} n={n} compact />
+                ))}
+              </div>
+            )}
 
             {startErrors[court.id] && (
               <p className="text-[11px] font-bold text-[#FF4444] animate-fade-in">⚠️ {startErrors[court.id]}</p>
@@ -356,25 +379,29 @@ function NextCallsSection({ tournamentId, courts, refreshKey }: { tournamentId: 
   )
 }
 
-function CallRow({ match, catInfo, n, label }: {
+function CallRow({ match, catInfo, n, emphasized = false, compact = false }: {
   match: Match
   catInfo?: CategoryInfo
   n: (id: string) => string
-  label?: string
+  emphasized?: boolean
+  compact?: boolean
 }) {
   return (
-    <div className="flex-1 min-w-0 flex items-center gap-2">
-      {label && <span className="shrink-0 text-[9px] font-black text-[#6B6B6B] uppercase tracking-wide">{label}</span>}
-      {catInfo && (
-        <span className={`shrink-0 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded ${catInfo.color}`}>
+    <div className="flex-1 min-w-0 space-y-1">
+      {catInfo && !compact && (
+        <span className={`inline-flex text-[8px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded ${catInfo.color}`}>
           {catInfo.name}
         </span>
       )}
-      <p className="text-sm font-bold text-[#F0F0F0] truncate">
-        {n(match.team1_p1)} · {n(match.team1_p2)}{' '}
-        <span className="text-[#6B6B6B] font-normal">vs</span>{' '}
-        {n(match.team2_p1)} · {n(match.team2_p2)}
-      </p>
+      <div className="flex items-center gap-3 min-w-0">
+        <p className={`flex-1 min-w-0 font-bold truncate ${emphasized ? 'text-base text-[#F0F0F0]' : compact ? 'text-xs text-[#888888]' : 'text-sm text-[#B8B8B8]'}`}>
+          {n(match.team1_p1)} · {n(match.team1_p2)}
+        </p>
+        <span className={`shrink-0 font-black uppercase ${emphasized ? 'text-base text-[#3F3F3F]' : 'text-[10px] text-[#484848]'}`}>vs</span>
+        <p className={`flex-1 min-w-0 text-right font-bold truncate ${emphasized ? 'text-base text-[#F0F0F0]' : compact ? 'text-xs text-[#888888]' : 'text-sm text-[#B8B8B8]'}`}>
+          {n(match.team2_p1)} · {n(match.team2_p2)}
+        </p>
+      </div>
     </div>
   )
 }
