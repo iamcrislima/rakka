@@ -9,7 +9,7 @@ import type { Tournament, Player, Match, TVContent, Court, Category } from '@/ty
 import TVDisplay, {
   type CourtSchedule, type RankingPanelData, type CategoryProgress,
   type HighlightData, type CollectiveStats, type AgendaCategory, type MuralPhoto,
-  type DashboardStats, type CategoryJogosBlock,
+  type DashboardStats, type CategoryJogosBlock, type CategoryCheckInStatus,
 } from './TVDisplay'
 
 const STAGE_ORDER: Record<string, number> = {
@@ -340,6 +340,23 @@ export default async function TVPage({ params }: { params: Promise<{ id: string 
     return messages.length > 0 ? messages : ['BEM-VINDOS AO TORNEIO!']
   }
 
+  // ── Check-in status — every category, counted against ALL of its
+  // registered players (unscoped `allPlayers`, never `scopedPlayers`).
+  // scopedPlayers is filtered down to "broadcasting" categories for the
+  // live rotation's own needs (Jogos/rankings/etc.) — but check-in matters
+  // most for a category that HASN'T started yet, and that's exactly the
+  // case scopedPlayers excludes, undercounting its total to 0 even when
+  // players are genuinely registered.
+  const checkInStatus: CategoryCheckInStatus[] = allCategories.map(c => {
+    const catPlayers = allPlayers.filter(p => p.category_id === c.id)
+    return {
+      categoryId:   c.id,
+      categoryName: c.name,
+      checkedIn:    catPlayers.filter(p => p.checked_in).length,
+      total:        catPlayers.length,
+    }
+  })
+
   // ── Agenda screen — every category, only shown when there's >1 ─
   const agendaCategories: AgendaCategory[] = allCategories.map(c => ({
     id:          c.id,
@@ -406,6 +423,7 @@ export default async function TVPage({ params }: { params: Promise<{ id: string 
       muralPhotos={muralPhotos}
       dashboardStats={dashboardStats}
       jogosBlocks={jogosBlocks}
+      checkInStatus={checkInStatus}
     />
   )
 }

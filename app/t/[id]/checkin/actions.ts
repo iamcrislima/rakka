@@ -15,12 +15,13 @@ export async function checkInPlayer(playerId: string): Promise<CheckInResult> {
   const { allowed } = await checkRateLimit(supabase, 'checkin', ip, { max: 20, windowSeconds: 60 })
   if (!allowed) return { ok: false, error: RATE_LIMIT_MESSAGE }
 
-  const { data: player } = await supabase
+  const { data: player, error: fetchErr } = await supabase
     .from('players')
     .select('checked_in')
     .eq('id', playerId)
     .single()
 
+  if (fetchErr) return { ok: false, error: 'Check-in indisponível no momento. Avise o organizador.' }
   if (!player) return { ok: false, error: 'Jogador não encontrado.' }
   if (player.checked_in) return { ok: true }
 

@@ -113,6 +113,11 @@ interface Props {
   muralPhotos:       MuralPhoto[]
   dashboardStats:    DashboardStats
   jogosBlocks:       CategoryJogosBlock[]
+  /** Every category, counted against ALL of its registered players — not
+   *  scoped to "broadcasting" categories, since check-in matters most for a
+   *  category that HASN'T started yet (whose players would otherwise be
+   *  filtered out entirely, undercounting its total to 0). */
+  checkInStatus:     CategoryCheckInStatus[]
 }
 
 // ── Per-category lookup info ─────────────────────────────────
@@ -1301,10 +1306,18 @@ function CheckInWelcomeScreen({ tournament, checkInStatus }: {
 
       <CheckInQR tournamentId={tournament.id} />
 
+      {/* flex-wrap + justify-center (not CSS Grid) so the card CLUSTER itself
+          is centered regardless of how many categories there are — a fixed
+          grid-template-columns track count (e.g. 4) left unfilled tracks
+          empty on the right whenever there were fewer categories than
+          columns, which visually dragged the card group left even though
+          this wrapping div was already correctly centered by the parent
+          flex. Also holds up for a ragged last row (e.g. 5 categories),
+          since each wrapped line centers independently. */}
       {checkInStatus.length > 0 && (
-        <div className="w-full max-w-4xl grid grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+        <div className="w-full max-w-4xl flex flex-wrap justify-center gap-4 shrink-0">
           {checkInStatus.map(c => (
-            <div key={c.categoryId} className="rounded-2xl border border-white/8 bg-white/[0.03] px-5 py-4 space-y-1.5">
+            <div key={c.categoryId} className="w-[212px] rounded-2xl border border-white/8 bg-white/[0.03] px-5 py-4 space-y-1.5">
               <p className="text-sm font-black text-white truncate">{c.categoryName}</p>
               <p className="font-display text-2xl font-bold tabular-nums" style={{ color: '#C8F135' }}>
                 {c.checkedIn}/{c.total}
@@ -1364,7 +1377,7 @@ export default function TVDisplay({
   rankingPanels, defaultRules, contentItems, courts,
   courtSchedules, categories, hasSuper8MistoCategory,
   progressData, collectiveStats, highlight, hypeMessages, agendaCategories, muralPhotos,
-  dashboardStats, jogosBlocks,
+  dashboardStats, jogosBlocks, checkInStatus,
 }: Props) {
   const router = useRouter()
   const [countdown, setCountdown] = useState(60)
@@ -1406,20 +1419,12 @@ export default function TVDisplay({
   // is showing — important once more than one category is broadcasting.
   const categoryNamesJoined = rankingPanels.map(p => p.categoryName).filter(Boolean).join(' · ')
 
-  // ── Check-in status — every category (not just broadcast ones), since
-  // this only matters pre-event when nothing is "broadcasting" yet anyway.
-  const checkInStatus: CategoryCheckInStatus[] = useMemo(
-    () => (categories ?? []).map(c => {
-      const catPlayers = players.filter(p => p.category_id === c.id)
-      return {
-        categoryId:   c.id,
-        categoryName: c.name,
-        checkedIn:    catPlayers.filter(p => p.checked_in).length,
-        total:        catPlayers.length,
-      }
-    }),
-    [players, categories],
-  )
+  // checkInStatus arrives pre-computed from page.tsx against ALL players
+  // (unscoped) — computing it here from `players` broke as soon as one
+  // category hadn't started broadcasting yet: `players` is scoped down to
+  // "broadcasting" categories for the live rotation's own purposes, so a
+  // not-yet-started category's roster was silently excluded, undercounting
+  // its total to 0/0 even when players were genuinely registered.
 
   // ── Screen rotation — 'jogos' is the existing courts/ranking view
   // (renamed), 'painel' consolidates progress/agenda/destaque/hype into
