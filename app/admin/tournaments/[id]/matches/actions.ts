@@ -72,19 +72,22 @@ function validateScore(score1: number, score2: number, rules: MatchRules): strin
  * match card. A no-op if the match was already started or is done, so
  * repeated/late clicks can never overwrite an earlier start time.
  *
- * Server-side gate (not just client): before starting, checks whether any of
- * the 4 players is already mid-match anywhere else in the SAME TOURNAMENT
- * (any category, any round) — "in progress" meaning started_at is set and
- * status is still 'pending'. A player can only ever be on one court at a
- * time, so this is a real physical constraint, not just a UX nicety — it's
- * what stops two rounds sharing a player from both being startable at once.
+ * Server-side gate (not just client) — two independent physical
+ * constraints, both checked against the SAME tournament-wide set of
+ * currently-active matches (any category, any round):
+ *   (a) none of the 4 players may already be mid-match elsewhere — a
+ *       player can only be on one court at a time;
+ *   (b) the match's own court may not already host another in-progress
+ *       match — a court can only run one match at a time, regardless of
+ *       which category it belongs to (this is what stopped category A/B
+ *       and C/D from both being "started" on the same physical court).
  */
 export async function startMatch(matchId: string): Promise<SubmitMatchResultResult> {
   const supabase = await createClient()
 
   const { data: match, error: mErr } = await supabase
     .from('matches')
-    .select('id, tournament_id, status, started_at, team1_p1, team1_p2, team2_p1, team2_p2')
+    .select('id, tournament_id, court_id, status, started_at, team1_p1, team1_p2, team2_p1, team2_p2')
     .eq('id', matchId)
     .single()
 
@@ -96,7 +99,7 @@ export async function startMatch(matchId: string): Promise<SubmitMatchResultResu
 
   const { data: activeMatches, error: activeErr } = await supabase
     .from('matches')
-    .select('id, court_id, team1_p1, team1_p2, team2_p1, team2_p2')
+    .select('id, court_id, category_id, team1_p1, team1_p2, team2_p1, team2_p2')
     .eq('tournament_id', match.tournament_id)
     .eq('status', 'pending')
     .not('started_at', 'is', null)
@@ -104,18 +107,19 @@ export async function startMatch(matchId: string): Promise<SubmitMatchResultResu
 
   if (activeErr) return { ok: false, error: activeErr.message }
 
-  const conflict = (activeMatches ?? []).find(am =>
+  // (a) Player conflict
+  const playerConflict = (activeMatches ?? []).find(am =>
     [am.team1_p1, am.team1_p2, am.team2_p1, am.team2_p2].some(pid => playerIds.includes(pid))
   )
 
-  if (conflict) {
+  if (playerConflict) {
     const conflictingPlayerId = playerIds.find(pid =>
-      [conflict.team1_p1, conflict.team1_p2, conflict.team2_p1, conflict.team2_p2].includes(pid)
+      [playerConflict.team1_p1, playerConflict.team1_p2, playerConflict.team2_p1, playerConflict.team2_p2].includes(pid)
     )!
     const [{ data: player }, { data: court }] = await Promise.all([
       supabase.from('players').select('name').eq('id', conflictingPlayerId).single(),
-      conflict.court_id
-        ? supabase.from('courts').select('name').eq('id', conflict.court_id).single()
+      playerConflict.court_id
+        ? supabase.from('courts').select('name').eq('id', playerConflict.court_id).single()
         : Promise.resolve({ data: null }),
     ])
     const playerName = player?.name ?? 'Jogador'
@@ -127,6 +131,31 @@ export async function startMatch(matchId: string): Promise<SubmitMatchResultResu
       error: court?.name
         ? `Não é possível iniciar — ${playerName} já está jogando em ${court.name}.`
         : `Não é possível iniciar — ${playerName} já está jogando em outra partida.`,
+    }
+  }
+
+  // (b) Court conflict — independent of (a); a match can be player-conflict-free
+  // and still collide on the venue if it's assigned to an already-busy court.
+  const courtConflict = match.court_id
+    ? (activeMatches ?? []).find(am => am.court_id === match.court_id)
+    : undefined
+
+  if (courtConflict) {
+    const [{ data: court }, { data: category }, { data: players }] = await Promise.all([
+      supabase.from('courts').select('name').eq('id', match.court_id!).single(),
+      courtConflict.category_id
+        ? supabase.from('categories').select('name').eq('id', courtConflict.category_id).single()
+        : Promise.resolve({ data: null }),
+      supabase.from('players').select('id, name').in('id', [
+        courtConflict.team1_p1, courtConflict.team1_p2, courtConflict.team2_p1, courtConflict.team2_p2,
+      ]),
+    ])
+    const nameById = Object.fromEntries((players ?? []).map(p => [p.id, p.name as string]))
+    const matchup = `${nameById[courtConflict.team1_p1] ?? '?'}/${nameById[courtConflict.team1_p2] ?? '?'} vs ${nameById[courtConflict.team2_p1] ?? '?'}/${nameById[courtConflict.team2_p2] ?? '?'}`
+    const label = category?.name ? `${category.name} — ${matchup}` : matchup
+    return {
+      ok: false,
+      error: `Não é possível iniciar — ${court?.name ?? 'a quadra'} já está em uso pela partida ${label}.`,
     }
   }
 

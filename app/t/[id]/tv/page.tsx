@@ -5,7 +5,7 @@ import { rulesFromTournament } from '@/lib/match-rules'
 import {
   computeSuper8MistoResult, getCurrentSuper8MistoRound, isSuper8MistoComplete, SUPER8_MISTO_ROUNDS,
 } from '@/lib/super8-misto'
-import type { Tournament, Player, Match, TVContent, Court, Category } from '@/types'
+import type { Tournament, Player, Match, TVContent, Court, Category, PlayerStats } from '@/types'
 import TVDisplay, {
   type CourtSchedule, type RankingPanelData, type CategoryProgress,
   type HighlightData, type CollectiveStats, type AgendaCategory, type MuralPhoto,
@@ -70,6 +70,49 @@ function computeWinStreakMessages(players: Player[], matches: Match[]): string[]
   }
   streaks.sort((a, b) => b.streak - a.streak)
   return streaks.slice(0, 2).map(s => `${s.name.toUpperCase()} EMPLACOU ${s.streak} VITÓRIAS SEGUIDAS!`)
+}
+
+/** "Reviravolta" — a player whose very first match was a loss, but who has
+ *  won every match since. Framed as a comeback story, never as "started
+ *  badly" — needs at least one win after that opening loss to qualify. */
+function computeTurnaroundMessages(players: Player[], matches: Match[]): string[] {
+  const doneSorted = matches
+    .filter(m => m.status === 'done' && m.score1 != null && m.score2 != null)
+    .sort((a, b) => a.round - b.round || new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+  const turnarounds: { name: string; streak: number }[] = []
+  for (const p of players) {
+    const playerMatches = doneSorted.filter(m =>
+      m.team1_p1 === p.id || m.team1_p2 === p.id || m.team2_p1 === p.id || m.team2_p2 === p.id
+    )
+    if (playerMatches.length < 2) continue
+
+    const wonMatch = (m: Match) => {
+      const onTeam1 = m.team1_p1 === p.id || m.team1_p2 === p.id
+      return onTeam1 ? (m.score1 ?? 0) > (m.score2 ?? 0) : (m.score2 ?? 0) > (m.score1 ?? 0)
+    }
+    if (wonMatch(playerMatches[0])) continue // opened with a win — no turnaround here
+
+    const rest = playerMatches.slice(1)
+    if (rest.length > 0 && rest.every(wonMatch)) {
+      turnarounds.push({ name: p.name, streak: rest.length })
+    }
+  }
+  turnarounds.sort((a, b) => b.streak - a.streak)
+  return turnarounds.slice(0, 2).map(t =>
+    `${t.name.toUpperCase()} PERDEU A ESTREIA E EMPLACOU ${t.streak} VITÓRIA${t.streak > 1 ? 'S' : ''} SEGUIDA${t.streak > 1 ? 'S' : ''} DEPOIS!`
+  )
+}
+
+/** Guards every "leader" claim against a category with no completed
+ *  matches yet (or a perfect tie), where ranking[0] is just whoever
+ *  happens to sort first with nothing real to back it up. */
+function hasRealLead(stats: PlayerStats[]): boolean {
+  if (stats.length < 2) return false
+  const [a, b] = stats
+  const aPlayed = a.wins > 0 || a.gamesWon > 0 || a.gamesLost > 0
+  if (!aPlayed) return false
+  return a.wins !== b.wins || a.gameDiff !== b.gameDiff || a.gamesWon !== b.gamesWon
 }
 
 /** Same underlying streak computation as the hype messages, but returns
@@ -260,36 +303,89 @@ export default async function TVPage({ params }: { params: Promise<{ id: string 
     totalDurationSeconds: durations.length > 0 ? durations.reduce((a, b) => a + b, 0) : null,
   }
 
-  // ── Destaques screen — "confronto imperdível" (never reveals rank) ──
-  let highlight: HighlightData | null = null
+  // ── Destaques — every highlight here is gated on real, verifiable data.
+  // A ranking array always has a [0], even with zero matches played (it's
+  // just whoever happened to sort first with 0-0-0 stats) — hasRealLead is
+  // what stops that from being read out loud as "the two best right now".
+  const highlights: HighlightData[] = []
+
+  // 1. Leader clash — the #1 of each side of a category, only when each
+  // side actually has a real, non-tied leader.
   for (const panel of rankingPanels) {
     if (!panel.showRanking) continue // keep Super8Misto suspense intact past round 4
-    const topA = panel.kind === 'gender' ? panel.kingRanking?.[0]?.player.id  : panel.rankingA?.[0]?.player.id
-    const topB = panel.kind === 'gender' ? panel.queenRanking?.[0]?.player.id : panel.rankingB?.[0]?.player.id
-    if (!topA || !topB) continue
+    const rankA = panel.kind === 'gender' ? panel.kingRanking  : panel.rankingA
+    const rankB = panel.kind === 'gender' ? panel.queenRanking : panel.rankingB
+    if (!rankA || !rankB || !hasRealLead(rankA) || !hasRealLead(rankB)) continue
+
+    const topA = rankA[0].player.id
+    const topB = rankB[0].player.id
     const catMatches    = allMatches.filter(m => m.category_id === panel.categoryId)
     const pendingActive = catMatches.filter(m => m.status === 'pending' && isActive(m))
     const clash = pendingActive.find(m => onOpposingTeams(m, topA, topB))
     if (clash) {
-      highlight = {
+      highlights.push({
         kind:         'topClash',
         categoryName: panel.categoryName,
         courtName:    clash.court_id ? (allCourts.find(c => c.id === clash.court_id)?.name ?? null) : null,
-      }
-      break
+      })
     }
   }
-  if (!highlight && currentMatch) {
+
+  // 2. Undefeated player about to play — anonymous pre-round-5 for Super8Misto
+  // (same suspense rule as the ranking panels), named otherwise.
+  for (const panel of rankingPanels) {
+    const pools = panel.kind === 'gender' ? [panel.kingRanking, panel.queenRanking] : [panel.rankingA, panel.rankingB]
+    const catMatches    = allMatches.filter(m => m.category_id === panel.categoryId)
+    const pendingActive = catMatches.filter(m => m.status === 'pending' && isActive(m))
+    for (const pool of pools) {
+      if (!pool) continue
+      const undefeated = pool.find(s => s.wins > 0 && s.losses === 0)
+      if (!undefeated) continue
+      const match = pendingActive.find(m =>
+        [m.team1_p1, m.team1_p2, m.team2_p1, m.team2_p2].includes(undefeated.player.id)
+      )
+      if (!match) continue
+      highlights.push({
+        kind:         'undefeated',
+        categoryName: panel.categoryName,
+        courtName:    match.court_id ? (allCourts.find(c => c.id === match.court_id)?.name ?? null) : null,
+        playerName:   undefeated.player.name,
+        anonymous:    !panel.showRanking,
+      })
+      break // one undefeated shout-out per panel is plenty
+    }
+  }
+
+  // 3. The next match itself — "Duelo equilibrado" when both sides have
+  // real, closely-matched records (never says who's ahead); otherwise the
+  // neutral "A seguir" fallback with just the matchup.
+  if (currentMatch) {
     const playerMap = Object.fromEntries(allPlayers.map(p => [p.id, p.name]))
     const catName = currentMatch.category_id
       ? (allCategories.find(c => c.id === currentMatch.category_id)?.name ?? '')
       : tournament.name
-    highlight = {
-      kind:         'nextMatch',
-      categoryName: catName,
-      courtName:    currentMatch.court_id ? (allCourts.find(c => c.id === currentMatch.court_id)?.name ?? null) : null,
-      team1:        `${playerMap[currentMatch.team1_p1] ?? '?'} + ${playerMap[currentMatch.team1_p2] ?? '?'}`,
-      team2:        `${playerMap[currentMatch.team2_p1] ?? '?'} + ${playerMap[currentMatch.team2_p2] ?? '?'}`,
+    const nextCourtName = currentMatch.court_id ? (allCourts.find(c => c.id === currentMatch.court_id)?.name ?? null) : null
+    const team1 = `${playerMap[currentMatch.team1_p1] ?? '?'} + ${playerMap[currentMatch.team1_p2] ?? '?'}`
+    const team2 = `${playerMap[currentMatch.team2_p1] ?? '?'} + ${playerMap[currentMatch.team2_p2] ?? '?'}`
+
+    const catPlayers = currentMatch.category_id
+      ? allPlayers.filter(p => p.category_id === currentMatch.category_id)
+      : allPlayers
+    const catMatchesAll = currentMatch.category_id
+      ? allMatches.filter(m => m.category_id === currentMatch.category_id)
+      : allMatches
+    const statsById = new Map(computeRanking(catPlayers, catMatchesAll).map(s => [s.player.id, s]))
+    const teamStats = (p1: string, p2: string) => [p1, p2].map(id => statsById.get(id)).filter((s): s is PlayerStats => !!s)
+    const t1Stats = teamStats(currentMatch.team1_p1, currentMatch.team1_p2)
+    const t2Stats = teamStats(currentMatch.team2_p1, currentMatch.team2_p2)
+    const t1Wins  = t1Stats.reduce((sum, s) => sum + s.wins, 0)
+    const t2Wins  = t2Stats.reduce((sum, s) => sum + s.wins, 0)
+    const gamesPlayed = [...t1Stats, ...t2Stats].reduce((sum, s) => sum + s.wins + s.losses, 0)
+
+    if (gamesPlayed > 0 && Math.abs(t1Wins - t2Wins) <= 1) {
+      highlights.push({ kind: 'closeMatch', categoryName: catName, courtName: nextCourtName, team1, team2 })
+    } else {
+      highlights.push({ kind: 'nextMatch', categoryName: catName, courtName: nextCourtName, team1, team2 })
     }
   }
 
@@ -317,6 +413,7 @@ export default async function TVPage({ params }: { params: Promise<{ id: string 
       }
       const catPlayers = allPlayers.filter(p => p.category_id === s8.id)
       messages.push(...computeWinStreakMessages(catPlayers, catMatches))
+      messages.push(...computeTurnaroundMessages(catPlayers, catMatches))
     } else {
       const totalAll = progressData.reduce((s, p) => s + p.totalMatches, 0)
       const doneAll  = progressData.reduce((s, p) => s + p.doneMatches, 0)
@@ -334,6 +431,7 @@ export default async function TVPage({ params }: { params: Promise<{ id: string 
         if (transition) messages.push(transition)
         const catPlayers = allPlayers.filter(p => p.category_id === cat.id)
         messages.push(...computeWinStreakMessages(catPlayers, catMatches))
+        messages.push(...computeTurnaroundMessages(catPlayers, catMatches))
       }
     }
 
@@ -419,7 +517,7 @@ export default async function TVPage({ params }: { params: Promise<{ id: string 
       hasSuper8MistoCategory={allCategories.some(c => c.format === 'super8_misto')}
       progressData={progressData}
       collectiveStats={collectiveStats}
-      highlight={highlight}
+      highlights={highlights}
       hypeMessages={buildHypeMessages()}
       agendaCategories={agendaCategories}
       muralPhotos={muralPhotos}

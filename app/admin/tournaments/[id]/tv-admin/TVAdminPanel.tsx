@@ -41,9 +41,17 @@ const TYPE_COLOR: Record<TVContentType, string> = {
 
 // ── Courts section ────────────────────────────────────────────
 
-function CourtsSection({ tournamentId, courts: initial }: { tournamentId: string; courts: Court[] }) {
+function CourtsSection({ tournamentId, courts, onCourtsChange, onRedistributed }: {
+  tournamentId:    string
+  courts:          Court[]
+  onCourtsChange:  (next: Court[]) => void
+  /** Bumps a refresh key on the sibling panels (Próximas chamadas, Programação
+   *  das quadras) so they re-fetch and pick up the just-redistributed matches
+   *  — they otherwise only fetch once on mount, so a new assignment wouldn't
+   *  show up in them without this. */
+  onRedistributed: () => void
+}) {
   const supabase            = createClient()
-  const [courts, setCourts]  = useState<Court[]>(initial)
   const [name, setName]     = useState('')
   const [adding, setAdding]  = useState(false)
   const [error, setError]   = useState('')
@@ -68,15 +76,26 @@ function CourtsSection({ tournamentId, courts: initial }: { tournamentId: string
       .select()
       .single()
     if (err) { setError(err.message); setAdding(false); return }
-    setCourts(prev => [...prev, data as Court])
+    onCourtsChange([...courts, data as Court])
     setName('')
     setAdding(false)
+
+    // A freshly added court should start pulling its share of the pending
+    // queue right away, not sit idle until someone opens "Auto-distribuir"
+    // manually — reuses the exact same assignCourts logic as that button,
+    // with rebalanceQueued so NOT-YET-STARTED matches are up for reshuffling
+    // across the updated court list (otherwise assignCourts pins anything
+    // that already has a court_id and the new court gets nothing). Matches
+    // already in progress keep their started_at set, so rebalanceQueued
+    // never touches them — only the backlog moves.
+    await autoAssignCourts(tournamentId, { sameGroupSameCourt: false, rebalanceQueued: true })
+    onRedistributed()
   }
 
   async function deleteCourt(id: string) {
     if (!confirm('Remover esta quadra? Partidas associadas perderão a atribuição.')) return
     await supabase.from('courts').delete().eq('id', id)
-    setCourts(prev => prev.filter(c => c.id !== id))
+    onCourtsChange(courts.filter(c => c.id !== id))
   }
 
   async function handleAutoAssign() {
@@ -231,7 +250,7 @@ const STAGE_SHORT: Record<string, string> = {
 
 interface CategoryInfo { name: string; color: string }
 
-function NextCallsSection({ tournamentId, courts }: { tournamentId: string; courts: Court[] }) {
+function NextCallsSection({ tournamentId, courts, refreshKey }: { tournamentId: string; courts: Court[]; refreshKey: number }) {
   const supabase = createClient()
   const [matches, setMatches]       = useState<Match[]>([])
   const [players, setPlayers]       = useState<Record<string, string>>({})
@@ -258,7 +277,7 @@ function NextCallsSection({ tournamentId, courts }: { tournamentId: string; cour
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [tournamentId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [tournamentId, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function n(id: string) { return players[id] ?? '?' }
   function catOf(m: Match): CategoryInfo | undefined { return m.category_id ? categories[m.category_id] : undefined }
@@ -360,7 +379,7 @@ function CallRow({ match, catInfo, n, label }: {
   )
 }
 
-function CourtSchedulePanel({ tournamentId, courts }: { tournamentId: string; courts: Court[] }) {
+function CourtSchedulePanel({ tournamentId, courts, refreshKey }: { tournamentId: string; courts: Court[]; refreshKey: number }) {
   const supabase = createClient()
   const [matches,   setMatches]  = useState<Match[]>([])
   const [players,   setPlayers]  = useState<Record<string, string>>({})  // id → firstName
@@ -388,7 +407,7 @@ function CourtSchedulePanel({ tournamentId, courts }: { tournamentId: string; co
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [tournamentId])
+  useEffect(() => { load() }, [tournamentId, refreshKey])
 
   function n(id: string) { return players[id] ?? '?' }
 
@@ -942,13 +961,19 @@ function ContentItemCard({ item, onEdit, onToggle, onDelete, onMove, isFirst, is
 
 // ── Root panel ────────────────────────────────────────────────
 
-export default function TVAdminPanel({ tournamentId, items: initialItems, courts, backTo }: Props) {
+export default function TVAdminPanel({ tournamentId, items: initialItems, courts: initialCourts, backTo }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [items, setItems]     = useState<TVContent[]>(initialItems)
   const [adding,  setAdding]  = useState(false)
   const [editing, setEditing] = useState<TVContent | null>(null)
   const [, startTransition]   = useTransition()
+
+  // Lifted here (not local to CourtsSection) so a newly added court is
+  // immediately visible to NextCallsSection/CourtSchedulePanel too — they
+  // otherwise only ever saw the server-rendered snapshot from page load.
+  const [courts, setCourts]         = useState<Court[]>(initialCourts)
+  const [scheduleKey, setScheduleKey] = useState(0)
 
   function refresh() {
     startTransition(() => { router.refresh() })
@@ -1017,17 +1042,22 @@ export default function TVAdminPanel({ tournamentId, items: initialItems, courts
       </div>
 
       {/* Courts */}
-      <CourtsSection tournamentId={tournamentId} courts={courts} />
+      <CourtsSection
+        tournamentId={tournamentId}
+        courts={courts}
+        onCourtsChange={setCourts}
+        onRedistributed={() => setScheduleKey(k => k + 1)}
+      />
 
       {/* Próximas chamadas — organizer-facing "what to call next per court",
           distinct from the TV mode's public-facing screens */}
       {courts.length > 0 && (
-        <NextCallsSection tournamentId={tournamentId} courts={courts} />
+        <NextCallsSection tournamentId={tournamentId} courts={courts} refreshKey={scheduleKey} />
       )}
 
       {/* Court schedule (manual reassignment + reorder) */}
       {courts.length > 0 && (
-        <CourtSchedulePanel tournamentId={tournamentId} courts={courts} />
+        <CourtSchedulePanel tournamentId={tournamentId} courts={courts} refreshKey={scheduleKey} />
       )}
 
       {/* Preview legend */}

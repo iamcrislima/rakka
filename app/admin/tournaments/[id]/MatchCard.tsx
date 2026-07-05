@@ -522,14 +522,16 @@ export default function MatchCard({ m, name, tournamentId, categoryId, rules, co
           ) : (
             <button
               onClick={() => setEditingCourt(true)}
-              className={`flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border transition-colors ${
+              className={`inline-flex items-center leading-none gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full border transition-colors ${
                 courtId
                   ? 'bg-[#161616] text-[#888888] border-[#242424] hover:border-[#3a3a3a] hover:text-[#C8F135]'
                   : 'bg-[#161616] text-amber-400/80 border-amber-500/20 hover:border-amber-500/40'
               }`}
             >
-              📍 {courtId ? (courts.find(c => c.id === courtId)?.name ?? 'Quadra') : 'Sem quadra atribuída'}
-              <span className="text-[#6B6B6B]">✎</span>
+              <span className="inline-flex items-center leading-none gap-1">
+                📍 {courtId ? (courts.find(c => c.id === courtId)?.name ?? 'Quadra') : 'Sem quadra atribuída'}
+              </span>
+              <span className="inline-flex items-center leading-none text-[#6B6B6B]">✎</span>
             </button>
           )}
         </div>

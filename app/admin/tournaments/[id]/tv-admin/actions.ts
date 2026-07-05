@@ -6,7 +6,18 @@ import type { Court, Match, Category } from '@/types'
 
 export async function autoAssignCourts(
   tournamentId: string,
-  options: AssignOptions,
+  options: AssignOptions & {
+    /** When true, every NOT-YET-STARTED match is treated as unassigned
+     *  before running assignCourts — even if it already had a court_id from
+     *  an earlier distribution — so a newly added court actually gets a
+     *  share of the backlog instead of assignCourts pinning everyone to
+     *  their existing court and leaving the new one empty. Matches that are
+     *  already started keep their court_id untouched either way (still
+     *  pinned), so nothing live ever gets reshuffled. Left off (default) for
+     *  the manual "Distribuir agora" button, which should only fill gaps,
+     *  not undo an organizer's manual reassignment. */
+    rebalanceQueued?: boolean
+  },
 ): Promise<{ assigned: number; skipped: number; error?: string }> {
   const supabase = await createClient()
 
@@ -22,8 +33,10 @@ export async function autoAssignCourts(
   if (cae) return { assigned: 0, skipped: 0, error: cae.message }
 
   const allCourts  = (courts  ?? []) as Court[]
-  const allMatches = (matches ?? []) as Match[]
   const allCats    = (cats    ?? []) as Pick<Category, 'id' | 'scheduled_at'>[]
+  const allMatches = ((matches ?? []) as Match[]).map(m =>
+    options.rebalanceQueued && !m.started_at ? { ...m, court_id: null, queue_position: null } : m
+  )
 
   const categorySchedule: Record<string, string | null> = Object.fromEntries(
     allCats.map(c => [c.id, c.scheduled_at ?? null])

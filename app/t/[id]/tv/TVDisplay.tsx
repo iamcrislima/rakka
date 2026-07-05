@@ -41,13 +41,20 @@ export interface CategoryProgress {
   doneMatches:   number
 }
 
-/** Painel Geral ticker — "confronto imperdível" block. 'topClash' never
- *  names the players (no rank disclosure); 'nextMatch' is the neutral
- *  fallback used when no upcoming match actually pits the two current
- *  leaders against each other. */
+/** Painel Geral ticker — real-data-driven highlight cards, never a claim
+ *  the numbers don't back up (see hasRealLead in page.tsx — a category with
+ *  no completed matches yet, or a perfect tie, produces none of these).
+ *  'topClash' never names the players (no rank disclosure). 'undefeated'
+ *  hides the name too while `anonymous` is true (before round 5 of a Super
+ *  Oito Misto category — same suspense rule as the ranking panels).
+ *  'closeMatch' never indicates who's ahead — that's the whole point of
+ *  calling it "equilibrado". 'nextMatch' is the neutral fallback used when
+ *  none of the above apply to the upcoming match. */
 export type HighlightData =
-  | { kind: 'topClash';  categoryName: string; courtName: string | null }
-  | { kind: 'nextMatch'; categoryName: string; courtName: string | null; team1: string; team2: string }
+  | { kind: 'topClash';    categoryName: string; courtName: string | null }
+  | { kind: 'nextMatch';   categoryName: string; courtName: string | null; team1: string; team2: string }
+  | { kind: 'undefeated';  categoryName: string; courtName: string | null; playerName: string | null; anonymous: boolean }
+  | { kind: 'closeMatch';  categoryName: string; courtName: string | null; team1: string; team2: string }
 
 /** Painel Geral ticker — collective, never-per-person counter. */
 export interface CollectiveStats {
@@ -107,7 +114,7 @@ interface Props {
   hasSuper8MistoCategory?: boolean
   progressData:      CategoryProgress[]
   collectiveStats:   CollectiveStats
-  highlight:         HighlightData | null
+  highlights:        HighlightData[]
   hypeMessages:      string[]
   agendaCategories:  AgendaCategory[]
   muralPhotos:       MuralPhoto[]
@@ -868,30 +875,74 @@ function formatCollectiveDuration(totalSecs: number): string {
 
 interface TickerEntry { key: string; render: () => React.ReactNode }
 
-function buildTickerEntries(hypeMessages: string[], highlight: HighlightData | null, collectiveStats: CollectiveStats): TickerEntry[] {
+/** Label + body per highlight kind — each is its own ticker slide, so a
+ *  category with several legitimate highlights at once (e.g. a leader
+ *  clash AND a separate undefeated player) rotates through all of them
+ *  instead of collapsing to just one. */
+function renderHighlight(highlight: HighlightData): { label: string; body: React.ReactNode } {
+  switch (highlight.kind) {
+    case 'topClash':
+      return {
+        label: '🔥 Confronto imperdível',
+        body: (
+          <p className="text-xl sm:text-2xl font-black text-white">
+            Os dois melhores do momento da <span style={{ color: '#C8F135' }}>{highlight.categoryName}</span> se enfrentam
+            {highlight.courtName ? <> na <span style={{ color: '#C8F135' }}>{highlight.courtName}</span></> : ''}!
+          </p>
+        ),
+      }
+    case 'undefeated':
+      return {
+        label: '💯 Invencibilidade em jogo',
+        body: (
+          <p className="text-xl sm:text-2xl font-black text-white">
+            {highlight.anonymous || !highlight.playerName ? (
+              <>Um jogador 100% invicto da <span style={{ color: '#C8F135' }}>{highlight.categoryName}</span> entra em quadra</>
+            ) : (
+              <><span style={{ color: '#C8F135' }}>{highlight.playerName}</span> entra em quadra 100% invicto na {highlight.categoryName}</>
+            )}
+            {highlight.courtName ? <> — <span style={{ color: '#C8F135' }}>{highlight.courtName}</span></> : ''}!
+          </p>
+        ),
+      }
+    case 'closeMatch':
+      return {
+        label: '⚖️ Duelo equilibrado',
+        body: (
+          <p className="text-lg sm:text-xl font-black text-white">
+            {highlight.team1} <span className="text-white/30">vs</span> {highlight.team2}
+            {highlight.courtName && <> — <span style={{ color: '#C8F135' }}>{highlight.courtName}</span></>}
+          </p>
+        ),
+      }
+    case 'nextMatch':
+      return {
+        label: '▶ A seguir',
+        body: (
+          <p className="text-lg sm:text-xl font-black text-white">
+            {highlight.team1} <span className="text-white/30">vs</span> {highlight.team2}
+            {highlight.courtName && <> — <span style={{ color: '#C8F135' }}>{highlight.courtName}</span></>}
+          </p>
+        ),
+      }
+  }
+}
+
+function buildTickerEntries(hypeMessages: string[], highlights: HighlightData[], collectiveStats: CollectiveStats): TickerEntry[] {
   const entries: TickerEntry[] = []
 
-  if (highlight) {
+  highlights.forEach((highlight, i) => {
+    const { label, body } = renderHighlight(highlight)
     entries.push({
-      key: 'highlight',
+      key: `highlight-${i}`,
       render: () => (
         <div className="space-y-2 max-w-2xl">
-          <p className="text-xs font-black uppercase tracking-widest" style={{ color: '#C8F135' }}>🔥 Confronto imperdível</p>
-          {highlight.kind === 'topClash' ? (
-            <p className="text-xl sm:text-2xl font-black text-white">
-              Os dois melhores do momento da <span style={{ color: '#C8F135' }}>{highlight.categoryName}</span> se enfrentam
-              {highlight.courtName ? <> na <span style={{ color: '#C8F135' }}>{highlight.courtName}</span></> : ''}!
-            </p>
-          ) : (
-            <p className="text-lg sm:text-xl font-black text-white">
-              {highlight.team1} <span className="text-white/30">vs</span> {highlight.team2}
-              {highlight.courtName && <> — <span style={{ color: '#C8F135' }}>{highlight.courtName}</span></>}
-            </p>
-          )}
+          <p className="text-xs font-black uppercase tracking-widest" style={{ color: '#C8F135' }}>{label}</p>
+          {body}
         </div>
       ),
     })
-  }
+  })
 
   entries.push({
     key: 'counter',
@@ -943,12 +994,12 @@ function buildTickerEntries(hypeMessages: string[], highlight: HighlightData | n
   return entries
 }
 
-function TickerBand({ hypeMessages, highlight, collectiveStats, active }: {
-  hypeMessages: string[]; highlight: HighlightData | null; collectiveStats: CollectiveStats; active: boolean
+function TickerBand({ hypeMessages, highlights, collectiveStats, active }: {
+  hypeMessages: string[]; highlights: HighlightData[]; collectiveStats: CollectiveStats; active: boolean
 }) {
   const entries = useMemo(
-    () => buildTickerEntries(hypeMessages, highlight, collectiveStats),
-    [hypeMessages, highlight, collectiveStats],
+    () => buildTickerEntries(hypeMessages, highlights, collectiveStats),
+    [hypeMessages, highlights, collectiveStats],
   )
   const [idx,     setIdx]     = useState(0)
   const [visible, setVisible] = useState(true)
@@ -1107,15 +1158,15 @@ function buildDashboardCards(stats: DashboardStats): StatCard[] {
   return cards
 }
 
-function PainelGeralScreen({ progressData, agendaCategories, hypeMessages, highlight, collectiveStats, dashboardStats, active }: {
+function PainelGeralScreen({ progressData, agendaCategories, hypeMessages, highlights, collectiveStats, dashboardStats, active }: {
   progressData: CategoryProgress[]; agendaCategories: AgendaCategory[]; hypeMessages: string[]
-  highlight: HighlightData | null; collectiveStats: CollectiveStats; dashboardStats: DashboardStats; active: boolean
+  highlights: HighlightData[]; collectiveStats: CollectiveStats; dashboardStats: DashboardStats; active: boolean
 }) {
   const showAgenda = agendaCategories.length > 1
   const cards = useMemo(() => buildDashboardCards(dashboardStats), [dashboardStats])
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <TickerBand hypeMessages={hypeMessages} highlight={highlight} collectiveStats={collectiveStats} active={active} />
+      <TickerBand hypeMessages={hypeMessages} highlights={highlights} collectiveStats={collectiveStats} active={active} />
       <div className={`flex-1 grid overflow-hidden ${showAgenda ? 'grid-cols-2' : 'grid-cols-1'}`}>
         <ProgressoRegion progressData={progressData} bordered={showAgenda} />
         {showAgenda && <AgendaRegion categories={agendaCategories} active={active} />}
@@ -1422,7 +1473,7 @@ export default function TVDisplay({
   tournament, players, currentMatch, nextMatches, recentResults,
   rankingPanels, defaultRules, contentItems, courts,
   courtSchedules, categories, hasSuper8MistoCategory,
-  progressData, collectiveStats, highlight, hypeMessages, agendaCategories, muralPhotos,
+  progressData, collectiveStats, highlights, hypeMessages, agendaCategories, muralPhotos,
   dashboardStats, jogosBlocks, checkInStatus,
 }: Props) {
   const router = useRouter()
@@ -1649,7 +1700,7 @@ export default function TVDisplay({
           progressData={progressData}
           agendaCategories={agendaCategories}
           hypeMessages={hypeMessages}
-          highlight={highlight}
+          highlights={highlights}
           collectiveStats={collectiveStats}
           dashboardStats={dashboardStats}
           active={activeScreen === 'painel'}

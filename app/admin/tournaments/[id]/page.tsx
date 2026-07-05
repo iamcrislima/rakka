@@ -7,6 +7,7 @@ import { rulesFromTournament } from '@/lib/match-rules'
 import type { Tournament, Player, Match, Category, Court } from '@/types'
 import TournamentHub from './TournamentHub'
 import QuickActions, { type QuickActionSpec } from './QuickActions'
+import LiveGamesPanel, { type LiveGameCourt } from './LiveGamesPanel'
 import BackLink from '@/app/components/BackLink'
 import AdminPageContainer from '@/app/components/AdminPageContainer'
 
@@ -47,19 +48,81 @@ async function getLegacyData(id: string) {
   }
 }
 
-/** Tournament-wide players + matches, across every category — just for the
- *  overview header stats and per-category progress bars. Doesn't touch any
- *  category/match business logic, just reads. */
+/** Tournament-wide players + matches + courts, across every category — for
+ *  the overview header stats, per-category progress bars, and the live
+ *  games panel (which needs court assignment, queue order, and team player
+ *  ids on top of just status/started_at). Doesn't touch any category/match
+ *  business logic, just reads. */
 async function getCategoryModeExtras(id: string) {
   const supabase = await createClient()
-  const [{ data: players }, { data: matches }] = await Promise.all([
-    supabase.from('players').select('id, category_id').eq('tournament_id', id),
-    supabase.from('matches').select('id, category_id, status, started_at').eq('tournament_id', id),
+  const [{ data: players }, { data: matches }, { data: courts }] = await Promise.all([
+    supabase.from('players').select('id, name, category_id').eq('tournament_id', id),
+    supabase.from('matches')
+      .select('id, category_id, court_id, status, started_at, queue_position, team1_p1, team1_p2, team2_p1, team2_p2')
+      .eq('tournament_id', id),
+    supabase.from('courts').select('*').eq('tournament_id', id).order('sort_order'),
   ])
   return {
-    players: (players ?? []) as Pick<Player, 'id' | 'category_id'>[],
-    matches: (matches ?? []) as Pick<Match, 'id' | 'category_id' | 'status' | 'started_at'>[],
+    players: (players ?? []) as Pick<Player, 'id' | 'name' | 'category_id'>[],
+    matches: (matches ?? []) as Pick<Match,
+      'id' | 'category_id' | 'court_id' | 'status' | 'started_at' | 'queue_position' |
+      'team1_p1' | 'team1_p2' | 'team2_p1' | 'team2_p2'
+    >[],
+    courts: (courts ?? []) as Court[],
   }
+}
+
+/** Groups live (started, unconfirmed) matches by court, one card per busy
+ *  court — cross-category by design, since a court cycles through whichever
+ *  categories share it. Each card also carries the next queued match on
+ *  that same court (which may belong to a different category). */
+function buildLiveCourts(
+  tournament: Tournament,
+  courts:     Court[],
+  matches:    Pick<Match, 'id' | 'category_id' | 'court_id' | 'status' | 'started_at' | 'queue_position' | 'team1_p1' | 'team1_p2' | 'team2_p1' | 'team2_p2'>[],
+  playerName: Record<string, string>,
+  categoryName: Record<string, string>,
+): LiveGameCourt[] {
+  const matchup = (m: Pick<Match, 'team1_p1' | 'team1_p2' | 'team2_p1' | 'team2_p2'>) =>
+    ({
+      team1: `${playerName[m.team1_p1] ?? '?'} + ${playerName[m.team1_p2] ?? '?'}`,
+      team2: `${playerName[m.team2_p1] ?? '?'} + ${playerName[m.team2_p2] ?? '?'}`,
+    })
+  const catName = (categoryId: string | null) => categoryId ? (categoryName[categoryId] ?? '') : tournament.name
+
+  const pending = matches.filter(m => m.status === 'pending')
+  const live    = pending.filter(m => m.started_at != null)
+  const queued  = pending.filter(m => m.started_at == null && m.court_id)
+
+  const queueByCourtId = new Map<string, typeof queued>()
+  for (const m of queued) {
+    const arr = queueByCourtId.get(m.court_id!) ?? []
+    arr.push(m)
+    queueByCourtId.set(m.court_id!, arr)
+  }
+  for (const arr of queueByCourtId.values()) {
+    arr.sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
+  }
+
+  return courts
+    .map((court): LiveGameCourt | null => {
+      const match = live.find(m => m.court_id === court.id)
+      if (!match) return null
+      const next = (queueByCourtId.get(court.id) ?? [])[0]
+      return {
+        courtId:   court.id,
+        courtName: court.name,
+        match: {
+          id:           match.id,
+          categoryId:   match.category_id,
+          categoryName: catName(match.category_id),
+          startedAt:    match.started_at!,
+          ...matchup(match),
+        },
+        next: next ? { id: next.id, categoryName: catName(next.category_id), ...matchup(next) } : null,
+      }
+    })
+    .filter((c): c is LiveGameCourt => c !== null)
 }
 
 // ── Page ──────────────────────────────────────────────────────
@@ -104,7 +167,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
   }
 
   // ── Category mode ─────────────────────────────────────────────
-  const { players: allPlayers, matches: allMatches } = await getCategoryModeExtras(id)
+  const { players: allPlayers, matches: allMatches, courts: allCourts } = await getCategoryModeExtras(id)
 
   // ── Per-category match progress (used by both the header stats and ──
   // each category card's progress bar)
@@ -131,6 +194,10 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
     matchesTotal:    allMatches.length,
   }
 
+  const playerName   = Object.fromEntries(allPlayers.map(p => [p.id, p.name]))
+  const categoryName = Object.fromEntries(categories.map(c => [c.id, c.name]))
+  const liveCourts    = buildLiveCourts(tournament, allCourts, allMatches, playerName, categoryName)
+
   return (
     <CategoryOverview
       tournament={tournament}
@@ -138,6 +205,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
       stats={stats}
       progressByCategory={progressByCategory}
       liveCountByCategory={liveCountByCategory}
+      liveCourts={liveCourts}
     />
   )
 }
@@ -152,12 +220,13 @@ interface TournamentStats {
   matchesTotal:    number
 }
 
-function CategoryOverview({ tournament, categories, stats, progressByCategory, liveCountByCategory }: {
+function CategoryOverview({ tournament, categories, stats, progressByCategory, liveCountByCategory, liveCourts }: {
   tournament:           Tournament
   categories:           Category[]
   stats:                TournamentStats
   progressByCategory:   Record<string, { done: number; total: number }>
   liveCountByCategory:  Record<string, number>
+  liveCourts:           LiveGameCourt[]
 }) {
   const active = categories.filter(c => c.status === 'group_stage' || c.status === 'finals')
   const rest   = categories.filter(c => c.status !== 'group_stage' && c.status !== 'finals')
@@ -228,6 +297,9 @@ function CategoryOverview({ tournament, categories, stats, progressByCategory, l
           </div>
         </div>
       </div>
+
+      {/* Jogos ao vivo — cross-category, one card per busy court */}
+      <LiveGamesPanel tournamentId={tournament.id} courts={liveCourts} />
 
       {/* Quick actions */}
       <QuickActions actions={quickActions} />

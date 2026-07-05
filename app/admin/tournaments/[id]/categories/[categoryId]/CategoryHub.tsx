@@ -6,8 +6,8 @@
  * All action buttons receive categoryId so they target the right records.
  */
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import BackLink from '@/app/components/BackLink'
@@ -331,6 +331,16 @@ function MatchesTab({ tournament, category, players, matches, rules, finalsSeeds
   const sortedGroup  = [...groupMatches].sort((a, b) => a.stage.localeCompare(b.stage) || a.round - b.round)
   const sortedFinals = [...finalsMatches].sort((a, b) => a.stage === 'final' ? -1 : 1)
 
+  // ── Deep-link from the "Jogos ao vivo" panel on the tournament page —
+  // ?focus=<matchId> scrolls straight to that card and rings it briefly.
+  const focusId = useSearchParams().get('focus')
+  useEffect(() => {
+    if (!focusId) return
+    const el = document.getElementById(`match-${focusId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusId])
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center gap-2 flex-wrap">
@@ -385,7 +395,9 @@ function MatchesTab({ tournament, category, players, matches, rules, finalsSeeds
           <SectionLabel icon="⚡" label="Finais" color="text-amber-400" />
           <div className="stagger grid grid-cols-1 2xl:grid-cols-2 gap-2.5">
             {sortedFinals.map(m => (
-              <MatchCard key={m.id} m={m} name={name} tournamentId={tournament.id} categoryId={category.id} rules={rules} courts={courts} scheduledAt={category.scheduled_at} />
+              <div key={m.id} id={`match-${m.id}`} className={m.id === focusId ? 'rounded-2xl ring-2 ring-[#C8F135]' : ''}>
+                <MatchCard m={m} name={name} tournamentId={tournament.id} categoryId={category.id} rules={rules} courts={courts} scheduledAt={category.scheduled_at} />
+              </div>
             ))}
           </div>
         </section>
@@ -403,7 +415,9 @@ function MatchesTab({ tournament, category, players, matches, rules, finalsSeeds
             <SectionLabel icon={cfg.icon} label={cfg.label} color={cfg.color} />
             <div className="stagger grid grid-cols-1 2xl:grid-cols-2 gap-2.5">
               {ms.map(m => (
-                <MatchCard key={m.id} m={m} name={name} tournamentId={tournament.id} categoryId={category.id} rules={rules} courts={courts} scheduledAt={category.scheduled_at} />
+                <div key={m.id} id={`match-${m.id}`} className={m.id === focusId ? 'rounded-2xl ring-2 ring-[#C8F135]' : ''}>
+                  <MatchCard m={m} name={name} tournamentId={tournament.id} categoryId={category.id} rules={rules} courts={courts} scheduledAt={category.scheduled_at} />
+                </div>
               ))}
             </div>
           </section>
