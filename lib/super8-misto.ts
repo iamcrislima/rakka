@@ -11,14 +11,32 @@
  *   Round r: man i partners woman (i + r) mod 8
  *   → each man covers all 8 women across the 8 rounds (1-factorization of K8,8).
  *
- * Match-up within a round (4 matches from the 8 mixed couples) — FIXED BUG:
- * this used to always pair couple i vs couple (i+4) mod 8, for every single
- * round, which meant man i faced the SAME opposing man (i+4) in all 8
- * rounds regardless of partner rotation. `pickFairMatching` now decides the
- * opponent pairing greedily round-by-round, always giving each man whichever
- * remaining opponent he's faced the FEWEST times so far (see below) — across
- * a fresh 8-round tournament that means 6 distinct opponents plus one
- * unavoidable repeat (8 rounds > 7 possible distinct opponents for 8 men).
+ * Match-up within a round (4 matches from the 8 mixed couples) — FIXED BUG,
+ * TWICE:
+ *
+ * 1st bug (original release): always paired couple i vs couple (i+4) mod 8,
+ * for every single round, so man i faced the SAME opposing man (i+4) in all
+ * 8 rounds regardless of partner rotation.
+ *
+ * 2nd bug (first attempted fix): `pickFairMatching` was changed to pick,
+ * round by round, whichever pairing of MEN-indices had been faced the
+ * fewest times so far — which does spread out the men's opponents, but
+ * completely ignores the WOMEN's side. Since the woman paired with man i in
+ * round r is (i+r) mod 8, two couples that face each other put two SPECIFIC
+ * women against each other too — and optimizing only for men's variety left
+ * plenty of real cases (confirmed against production data) where a woman
+ * repeated an opponent the men's-only search had no way to see or avoid.
+ *
+ * Current fix: `pickFairMatching` now tracks BOTH a men-vs-men history AND
+ * a women-vs-women history, and for each round picks — out of all 105
+ * possible ways to split 8 men-indices into 4 pairs — whichever one
+ * minimizes the COMBINED repeat count on both sides at once (the
+ * women-pairing for a given men-pairing is fully determined once the
+ * round's partner rotation is fixed, so this can be computed and scored
+ * before choosing). Verified in lib/super8-misto.test.ts: for a fresh
+ * category this gives every player — man or woman — exactly 7 distinct
+ * opposite-gender opponents across the 8 rounds (6 distinct + 1 unavoidable
+ * repeat, since there are only 7 possible opponents but 8 rounds).
  *
  * Matches reuse the existing Match/MatchSeed shape unchanged — all 32
  * seeds use stage 'group_a' with round 1-8 (4 matches share each round).
@@ -65,31 +83,64 @@ export function validateSuper8Misto(players: Player[]): Super8MistoValidation {
 // ── Round generation ─────────────────────────────────────────────────────
 
 /**
- * Greedily builds ONE round's opponent pairing (a perfect matching of 8
- * men-indices into 4 disjoint pairs), always giving each still-unpaired man
- * whichever remaining candidate he's faced the fewest times so far —
- * mutating `playedCount` in place as pairs are chosen, so a caller building
- * several rounds in sequence naturally keeps spreading opponents fairly
- * across all of them (never just re-deriving the same round in isolation).
- * Ties break on lowest index, which is what makes a fresh (all-zero)
- * `playedCount` produce a deterministic, reproducible schedule.
+ * All 105 ways to split {0..7} into 4 disjoint pairs — (8-1)!! = 105, cheap
+ * enough to enumerate once and re-score every round.
  */
-function pickFairMatching(playedCount: number[][]): [number, number][] {
-  const remaining = [0, 1, 2, 3, 4, 5, 6, 7]
-  const pairs: [number, number][] = []
-  while (remaining.length > 0) {
-    const i = remaining.shift()!
-    let bestJ = -1
-    let bestCount = Infinity
-    for (const j of remaining) {
-      if (playedCount[i][j] < bestCount) { bestCount = playedCount[i][j]; bestJ = j }
+function allPerfectMatchings(elements: number[]): [number, number][][] {
+  if (elements.length === 0) return [[]]
+  const [first, ...rest] = elements
+  const results: [number, number][][] = []
+  for (let i = 0; i < rest.length; i++) {
+    const partner = rest[i]
+    const remaining = [...rest.slice(0, i), ...rest.slice(i + 1)]
+    for (const sub of allPerfectMatchings(remaining)) {
+      results.push([[first, partner], ...sub])
     }
-    remaining.splice(remaining.indexOf(bestJ), 1)
-    pairs.push([i, bestJ])
-    playedCount[i][bestJ]++
-    playedCount[bestJ][i]++
   }
-  return pairs
+  return results
+}
+
+const ALL_MEN_MATCHINGS = allPerfectMatchings([0, 1, 2, 3, 4, 5, 6, 7])
+
+/**
+ * Builds ONE round's opponent pairing (which of the 8 men-indices face
+ * which) by trying all 105 possible pairings and keeping whichever
+ * minimizes the COMBINED repeat count on BOTH sides at once: for a
+ * candidate men-pair (i, j), the round's fixed partner rotation means the
+ * women paired with them are ((i+round)%8, (j+round)%8), so that women-pair
+ * repeat count can be scored right alongside the men-pair's. Mutates
+ * `menPlayedCount`/`womenPlayedCount` in place once the best matching for
+ * the round is chosen, so a caller building several rounds in sequence
+ * keeps steering both genders away from repeats across all of them. Ties
+ * break on `ALL_MEN_MATCHINGS` order, which is what makes a fresh (all-zero)
+ * history produce a deterministic, reproducible schedule.
+ */
+function pickFairMatching(
+  round: number,
+  menPlayedCount: number[][],
+  womenPlayedCount: number[][],
+): [number, number][] {
+  let best = ALL_MEN_MATCHINGS[0]
+  let bestScore = Infinity
+  for (const matching of ALL_MEN_MATCHINGS) {
+    let score = 0
+    for (const [i, j] of matching) {
+      score += menPlayedCount[i][j]
+      const wi = (i + round) % SUPER8_MISTO_TEAM_SIZE
+      const wj = (j + round) % SUPER8_MISTO_TEAM_SIZE
+      score += womenPlayedCount[wi][wj]
+    }
+    if (score < bestScore) { bestScore = score; best = matching }
+  }
+  for (const [i, j] of best) {
+    menPlayedCount[i][j]++
+    menPlayedCount[j][i]++
+    const wi = (i + round) % SUPER8_MISTO_TEAM_SIZE
+    const wj = (j + round) % SUPER8_MISTO_TEAM_SIZE
+    womenPlayedCount[wi][wj]++
+    womenPlayedCount[wj][wi]++
+  }
+  return best
 }
 
 /**
@@ -105,7 +156,8 @@ export function generateSuper8MistoMatches(players: Player[]): MatchSeed[] {
   const women = players.filter(p => p.gender === 'F').sort((a, b) => a.position - b.position)
 
   const seeds: MatchSeed[] = []
-  const playedCount = Array.from({ length: SUPER8_MISTO_TEAM_SIZE }, () => Array(SUPER8_MISTO_TEAM_SIZE).fill(0))
+  const menPlayedCount   = Array.from({ length: SUPER8_MISTO_TEAM_SIZE }, () => Array(SUPER8_MISTO_TEAM_SIZE).fill(0))
+  const womenPlayedCount = Array.from({ length: SUPER8_MISTO_TEAM_SIZE }, () => Array(SUPER8_MISTO_TEAM_SIZE).fill(0))
 
   for (let r = 0; r < SUPER8_MISTO_ROUNDS; r++) {
     // couples[i] = man i + woman (i + r) mod 8
@@ -114,7 +166,7 @@ export function generateSuper8MistoMatches(players: Player[]): MatchSeed[] {
       woman: women[(i + r) % SUPER8_MISTO_TEAM_SIZE],
     }))
 
-    for (const [i, j] of pickFairMatching(playedCount)) {
+    for (const [i, j] of pickFairMatching(r, menPlayedCount, womenPlayedCount)) {
       const c1 = couples[i]
       const c2 = couples[j]
       seeds.push({
@@ -192,25 +244,28 @@ export interface Super8MistoRepairUpdate {
  * altered either — only which two couples are matched against each other
  * within an untouched round.
  *
- * Critically, `playedCount` is seeded from the ALREADY-locked-in rounds
- * first (done or in-progress matches) before touching anything — so the 4
- * pairs the old bug already forced to play 3 times in a row are correctly
- * treated as "overplayed" and `pickFairMatching` steers the remaining
- * rounds away from repeating them again, instead of just reproducing a
- * different-but-still-blind fixed formula.
+ * Critically, both `menPlayedCount` and `womenPlayedCount` are seeded from
+ * the ALREADY-locked-in rounds first (done or in-progress matches) before
+ * touching anything — so the pairs the old bug already forced to repeat are
+ * correctly treated as "overplayed" on BOTH sides, and `pickFairMatching`
+ * steers the remaining rounds away from repeating them again, instead of
+ * just reproducing a different-but-still-blind formula.
  *
  * Returns the {matchId, team1_p1, team1_p2, team2_p1, team2_p2} updates to
  * write — callers apply them (this function only computes, never writes).
  */
 export function repairSuper8MistoOpponents(players: Player[], matches: Match[]): Super8MistoRepairUpdate[] {
-  const men = players.filter(p => p.gender === 'M').sort((a, b) => a.position - b.position)
-  const manIndex = new Map(men.map((m, i) => [m.id, i]))
+  const men   = players.filter(p => p.gender === 'M').sort((a, b) => a.position - b.position)
+  const women = players.filter(p => p.gender === 'F').sort((a, b) => a.position - b.position)
+  const manIndex   = new Map(men.map((m, i) => [m.id, i]))
+  const womanIndex = new Map(women.map((w, i) => [w.id, i]))
 
   const rounds = Array.from({ length: SUPER8_MISTO_ROUNDS }, (_, i) => i + 1)
     .map(round => matches.filter(m => m.round === round && m.stage === SUPER8_MISTO_STAGE))
     .filter(ms => ms.length > 0)
 
-  const playedCount = Array.from({ length: SUPER8_MISTO_TEAM_SIZE }, () => Array(SUPER8_MISTO_TEAM_SIZE).fill(0))
+  const menPlayedCount   = Array.from({ length: SUPER8_MISTO_TEAM_SIZE }, () => Array(SUPER8_MISTO_TEAM_SIZE).fill(0))
+  const womenPlayedCount = Array.from({ length: SUPER8_MISTO_TEAM_SIZE }, () => Array(SUPER8_MISTO_TEAM_SIZE).fill(0))
 
   // Seed with every round that already has SOME committed result/activity —
   // these are never touched, but their opponent history still counts.
@@ -219,15 +274,18 @@ export function repairSuper8MistoOpponents(players: Player[], matches: Match[]):
     for (const m of roundMatches) {
       const i = manIndex.get(m.team1_p1)
       const j = manIndex.get(m.team2_p1)
-      if (i == null || j == null) continue
-      playedCount[i][j]++
-      playedCount[j][i]++
+      if (i != null && j != null) { menPlayedCount[i][j]++; menPlayedCount[j][i]++ }
+      const wi = womanIndex.get(m.team1_p2)
+      const wj = womanIndex.get(m.team2_p2)
+      if (wi != null && wj != null) { womenPlayedCount[wi][wj]++; womenPlayedCount[wj][wi]++ }
     }
   }
 
   const updates: Super8MistoRepairUpdate[] = []
 
-  for (const roundMatches of rounds) {
+  for (let round = 1; round <= SUPER8_MISTO_ROUNDS; round++) {
+    const roundMatches = rounds.find(ms => ms[0]?.round === round)
+    if (!roundMatches) continue
     if (roundMatches.length !== 4) continue // incomplete/unexpected shape — skip defensively
     if (roundMatches.some(m => m.status === 'done' || m.started_at != null)) continue
 
@@ -247,7 +305,7 @@ export function repairSuper8MistoOpponents(players: Player[], matches: Match[]):
     // ever UPDATEs matches, never inserts/deletes/reorders them.
     const sortedMatchIds = [...roundMatches].sort((a, b) => a.id.localeCompare(b.id)).map(m => m.id)
 
-    pickFairMatching(playedCount).forEach(([i, j], k) => {
+    pickFairMatching(round - 1, menPlayedCount, womenPlayedCount).forEach(([i, j], k) => {
       const c1 = couplesByManIndex.get(i)!
       const c2 = couplesByManIndex.get(j)!
       updates.push({
